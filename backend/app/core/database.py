@@ -2,6 +2,7 @@ import os
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -10,31 +11,14 @@ from .config import get_settings
 
 def _repair_host_segment_optional_port(seg: str) -> str:
     """
-    Quita `: ` vacío ante path (`host:/db`) para que psycopg2/SQLAlchemy no reciban puerto ''.
+    Plantillas tipo `${HOST}:${PGPORT}` con PGPORT vacío suelen producir:
 
-    Válido típico: `postgres.r.internal` o `postgres.r.internal:54529`; inválido: `postgres.r.internal:`.
-    IPv6 tipo `[::1]:5432` o `[::1]:` también se corrige cuando el puerto tras `]:` viene vacío.
+    `host:/db`, `host::/db` o varios ':' finales. SQLAlchemy acaba viendo puerto ''
+
+    ante `:/` pero también falla ante `host::` porque el último sufijo `: ` no viene vacío.
+    Quitar sólo ':' al final preserva puertos válidos (`...:5432` termina en dígito, no ':').
     """
-    if not seg:
-        return seg
-    if seg.startswith("["):
-        end = seg.find("]")
-        if end == -1:
-            return seg
-        base = seg[: end + 1]
-        tail = seg[end + 1 :]
-        if tail.startswith(":") and tail[1:] == "":
-            return base
-        return seg
-    if ":" not in seg:
-        return seg
-    host, sep, sport = seg.rpartition(":")
-    if sport == "" and sep == ":":
-        return host
-    if sport.isdigit():
-        return seg
-    # Hostname con sufijo `:algo` que no parece puerto → no tocar.
-    return seg
+    return seg.rstrip(":")
 
 
 def _repair_postgresql_netloc(netloc: str) -> str:
@@ -85,6 +69,16 @@ def _raise_if_railway_db_points_to_this_service(url: str) -> None:
 def get_database_url() -> str:
     url = _normalize_database_url(get_settings().database_url)
     _raise_if_railway_db_points_to_this_service(url)
+    if url.startswith("postgresql"):
+        try:
+            make_url(url)
+        except ValueError:
+            raise RuntimeError(
+                "DATABASE_URL tiene un formato PostgreSQL que no se puede interpretar "
+                "(p. ej. puerto ausente pero con ':' de más ante el path si la plantilla tiene "
+                "PGPORT vacío). En Railway usá Referencia literal al Postgres.DATABASE_URL "
+                "o corregí la plantilla tipo ${DOMAIN}:${PGPORT}/${PGDATABASE}."
+            ) from None
     return url
 
 
