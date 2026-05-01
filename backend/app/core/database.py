@@ -2,7 +2,7 @@ import os
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy import create_engine
-from sqlalchemy.engine.url import make_url
+from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -32,22 +32,119 @@ def _repair_postgresql_netloc(netloc: str) -> str:
 
 def _normalize_database_url(url: str) -> str:
     """Ajustes para proveedores (p. ej. Railway) sin sobrescribir parámetros ya definidos."""
+    url = (url or "").strip()
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
 
     parsed = urlparse(url)
-    if parsed.scheme.startswith("postgresql") and parsed.netloc:
-        parsed = parsed._replace(netloc=_repair_postgresql_netloc(parsed.netloc))
-    if parsed.scheme.startswith("postgresql") and parsed.hostname:
-        host = parsed.hostname.lower()
-        q = dict(parse_qsl(parsed.query, keep_blank_values=True))
-        # Proxy TCP público de Railway (*.proxy.rlwy.net): PostgreSQL espera TLS.
-        if host.endswith(".proxy.rlwy.net") and "sslmode" not in q:
-            q["sslmode"] = "require"
+    if not parsed.scheme.startswith("postgresql"):
+        return url
 
-        merged_query = urlencode(q) if q else ""
-        return urlunparse(parsed._replace(query=merged_query))
-    return url
+    if parsed.netloc:
+        repaired = _repair_postgresql_netloc(parsed.netloc.strip())
+        parsed = parsed._replace(netloc=repaired)
+
+    host = (parsed.hostname or "").lower()
+    q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    if host.endswith(".proxy.rlwy.net") and "sslmode" not in q:
+        q["sslmode"] = "require"
+
+    merged_query = urlencode(q) if q else ""
+    return urlunparse(parsed._replace(query=merged_query))
+
+
+def _infer_railway_postgres_database(hostname: str | None, path: str) -> str:
+    current = path.lstrip("/") if path else ""
+    if current:
+        return current
+    h = (hostname or "").lower()
+    if ".railway.internal" in h or ".proxy.rlwy.net" in h:
+        return "railway"
+    return current
+
+
+def _ensure_railway_default_database(url: str) -> str:
+    """Plantillas que omiten /PGDATABASE dejan database=None para hosts Railway; Postgres usa otro BD por defecto."""
+    p = urlparse(url.strip())
+    if not p.scheme.startswith("postgresql") or not p.hostname:
+        return url
+    if (p.path or "").strip("/"):
+        return url
+    h = p.hostname.lower()
+    if ".railway.internal" not in h and ".proxy.rlwy.net" not in h:
+        return url
+    return urlunparse(p._replace(path="/railway"))
+
+
+def _rescue_postgresql_url(url: str) -> str:
+    """Ensambla una URL válida cuando make_url rechaza cadenas raras típicas de plantillas Railway."""
+    p_in = urlparse(url.strip())
+    if not p_in.scheme.startswith("postgresql"):
+        return url
+
+    netloc_fixed = (
+        _repair_postgresql_netloc(p_in.netloc.strip())
+        if p_in.netloc
+        else ""
+    )
+    rebuilt = urlunparse(
+        (
+            p_in.scheme,
+            netloc_fixed,
+            p_in.path or "",
+            p_in.params,
+            p_in.query,
+            p_in.fragment,
+        )
+    )
+
+    parsed = urlparse(rebuilt)
+
+    hostname = parsed.hostname
+
+    username = parsed.username
+
+    password = parsed.password
+
+    try:
+        port = parsed.port
+    except ValueError:
+        port = None
+
+    q = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    q = {k: v for k, v in q.items() if v != ""}
+    hlow = (hostname or "").lower()
+    if hlow.endswith(".proxy.rlwy.net") and "sslmode" not in q:
+        q["sslmode"] = "require"
+
+    database = _infer_railway_postgres_database(hostname, parsed.path or "")
+
+    try:
+        u = URL.create(
+            drivername="postgresql",
+            username=username,
+            password=password,
+            host=hostname,
+            port=port,
+            database=database or None,
+            query=q,
+        )
+        canonical = u.render_as_string(hide_password=False)
+        make_url(canonical)
+        return canonical
+    except Exception as inner:
+        hint = ""
+        try:
+            hint = f" hostname={parsed.hostname!r} path_db={parsed.path!r}"
+        except Exception:
+            pass
+        raise RuntimeError(
+            "No se pudo interpretar DATABASE_URL como PostgreSQL. "
+            + hint
+            + " En Railway usá “Reference → servicio Postgres → DATABASE_URL” sin plantillas "
+            "manuales con ${DOMAIN}:${PGPORT} si pueden quedar vacías."
+        ) from inner
 
 
 def _raise_if_railway_db_points_to_this_service(url: str) -> None:
@@ -67,19 +164,22 @@ def _raise_if_railway_db_points_to_this_service(url: str) -> None:
 
 
 def get_database_url() -> str:
-    url = _normalize_database_url(get_settings().database_url)
-    _raise_if_railway_db_points_to_this_service(url)
-    if url.startswith("postgresql"):
-        try:
-            make_url(url)
-        except ValueError:
-            raise RuntimeError(
-                "DATABASE_URL tiene un formato PostgreSQL que no se puede interpretar "
-                "(p. ej. puerto ausente pero con ':' de más ante el path si la plantilla tiene "
-                "PGPORT vacío). En Railway usá Referencia literal al Postgres.DATABASE_URL "
-                "o corregí la plantilla tipo ${DOMAIN}:${PGPORT}/${PGDATABASE}."
-            ) from None
-    return url
+    raw = _normalize_database_url(get_settings().database_url)
+    _raise_if_railway_db_points_to_this_service(raw)
+
+    if not raw.startswith("postgresql"):
+        return raw
+
+    try:
+        make_url(raw)
+        coerced = _ensure_railway_default_database(raw)
+        make_url(coerced)
+        return coerced
+    except ValueError:
+        rescued = _rescue_postgresql_url(raw)
+        coerced = _ensure_railway_default_database(rescued)
+        make_url(coerced)
+        return coerced
 
 
 def create_db_engine():
