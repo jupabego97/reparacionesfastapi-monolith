@@ -3,6 +3,7 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL, make_url
+from sqlalchemy.exc import ArgumentError as SAArgumentError
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import StaticPool
 
@@ -102,6 +103,12 @@ def _rescue_postgresql_url(url: str) -> str:
     parsed = urlparse(rebuilt)
 
     hostname = parsed.hostname
+    if not (hostname or "").strip():
+        raise RuntimeError(
+            "DATABASE_URL de PostgreSQL no incluye servidor (hostname). "
+            "En Railway: Reference → Postgres → DATABASE_URL (no perdá el fragmento "
+            "`@HOST...` al armar variables)."
+        )
 
     username = parsed.username
 
@@ -147,6 +154,21 @@ def _rescue_postgresql_url(url: str) -> str:
         ) from inner
 
 
+def _reject_postgresql_missing_host(canonical_url: str) -> None:
+    """libpq/psycopg2 sin host en el DSN usan socket Unix local (/var/run/postgresql), inútil en contenedores."""
+    p = urlparse(canonical_url.strip())
+    if not p.scheme.startswith("postgresql"):
+        return
+    if p.hostname:
+        return
+    raise RuntimeError(
+        "DATABASE_URL de PostgreSQL no incluye servidor (falta @HOST antes del nombre de la base). "
+        "Ejemplo correcto: postgresql://USUARIO:CLAVE@HOST:PUERTO/railway. "
+        "En Railway creá la variable DATABASE_URL como Reference → servicio Postgres → DATABASE_URL, "
+        "no una plantilla donde desaparezca el host por variables vacías."
+    )
+
+
 def _raise_if_railway_db_points_to_this_service(url: str) -> None:
     """Railway: DATABASE_URL mal referenciado suele apuntar a `web.railway.internal` (esta app), no a Postgres."""
     srv = (os.environ.get("RAILWAY_SERVICE_NAME") or "").strip().lower()
@@ -174,11 +196,13 @@ def get_database_url() -> str:
         make_url(raw)
         coerced = _ensure_railway_default_database(raw)
         make_url(coerced)
+        _reject_postgresql_missing_host(coerced)
         return coerced
-    except ValueError:
+    except (ValueError, SAArgumentError):
         rescued = _rescue_postgresql_url(raw)
         coerced = _ensure_railway_default_database(rescued)
         make_url(coerced)
+        _reject_postgresql_missing_host(coerced)
         return coerced
 
 
