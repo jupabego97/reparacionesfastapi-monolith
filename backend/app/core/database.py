@@ -8,12 +8,52 @@ from sqlalchemy.pool import StaticPool
 from .config import get_settings
 
 
+def _repair_host_segment_optional_port(seg: str) -> str:
+    """
+    Quita `: ` vacío ante path (`host:/db`) para que psycopg2/SQLAlchemy no reciban puerto ''.
+
+    Válido típico: `postgres.r.internal` o `postgres.r.internal:54529`; inválido: `postgres.r.internal:`.
+    IPv6 tipo `[::1]:5432` o `[::1]:` también se corrige cuando el puerto tras `]:` viene vacío.
+    """
+    if not seg:
+        return seg
+    if seg.startswith("["):
+        end = seg.find("]")
+        if end == -1:
+            return seg
+        base = seg[: end + 1]
+        tail = seg[end + 1 :]
+        if tail.startswith(":") and tail[1:] == "":
+            return base
+        return seg
+    if ":" not in seg:
+        return seg
+    host, sep, sport = seg.rpartition(":")
+    if sport == "" and sep == ":":
+        return host
+    if sport.isdigit():
+        return seg
+    # Hostname con sufijo `:algo` que no parece puerto → no tocar.
+    return seg
+
+
+def _repair_postgresql_netloc(netloc: str) -> str:
+    if not netloc:
+        return netloc
+    if "@" in netloc:
+        userpart, hp = netloc.rsplit("@", 1)
+        return userpart + "@" + _repair_host_segment_optional_port(hp)
+    return _repair_host_segment_optional_port(netloc)
+
+
 def _normalize_database_url(url: str) -> str:
     """Ajustes para proveedores (p. ej. Railway) sin sobrescribir parámetros ya definidos."""
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
 
     parsed = urlparse(url)
+    if parsed.scheme.startswith("postgresql") and parsed.netloc:
+        parsed = parsed._replace(netloc=_repair_postgresql_netloc(parsed.netloc))
     if parsed.scheme.startswith("postgresql") and parsed.hostname:
         host = parsed.hostname.lower()
         q = dict(parse_qsl(parsed.query, keep_blank_values=True))
