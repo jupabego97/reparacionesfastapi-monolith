@@ -1,3 +1,4 @@
+import os
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from sqlalchemy import create_engine
@@ -25,8 +26,25 @@ def _normalize_database_url(url: str) -> str:
     return url
 
 
+def _raise_if_railway_db_points_to_this_service(url: str) -> None:
+    """Railway: DATABASE_URL mal referenciado suele apuntar a `web.railway.internal` (esta app), no a Postgres."""
+    srv = (os.environ.get("RAILWAY_SERVICE_NAME") or "").strip().lower()
+    if not srv or not url.startswith("postgresql"):
+        return
+    host = (urlparse(url).hostname or "").lower()
+    if host == f"{srv}.railway.internal":
+        port = urlparse(url).port or 5432
+        raise RuntimeError(
+            f"DATABASE_URL apunta a {host}:{port}, el host interno de este servicio Railway ({srv!r}), "
+            "no del plugin PostgreSQL; en el puerto 5432 no hay base de datos aquí. "
+            "En Variables del servicio que corre la API, referenciá DATABASE_URL del servicio Postgres "
+            "(Add variable → Reference → tu servicio Postgres), no del servicio web."
+        )
+
+
 def get_database_url() -> str:
     url = _normalize_database_url(get_settings().database_url)
+    _raise_if_railway_db_points_to_this_service(url)
     return url
 
 
