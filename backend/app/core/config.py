@@ -45,6 +45,25 @@ class Settings(BaseSettings):
     use_s3_storage: bool = Field(default=False, validation_alias=AliasChoices("USE_S3_STORAGE", "R2_ENABLED"))
     media_v2_read_write: bool = True
 
+    # --- WhatsApp Business (Meta Cloud API) ---
+    whatsapp_enabled: bool = Field(default=False, validation_alias=AliasChoices("WHATSAPP_ENABLED"))
+    whatsapp_access_token: str = Field(default="", validation_alias=AliasChoices("WHATSAPP_ACCESS_TOKEN"))
+    whatsapp_phone_number_id: str = Field(default="", validation_alias=AliasChoices("WHATSAPP_PHONE_NUMBER_ID"))
+    whatsapp_graph_version: str = Field(
+        default="v21.0",
+        validation_alias=AliasChoices("WHATSAPP_GRAPH_API_VERSION", "WHATSAPP_GRAPH_VERSION"),
+    )
+    whatsapp_default_country_code: str = Field(
+        default="57",
+        validation_alias=AliasChoices("WHATSAPP_DEFAULT_COUNTRY_CODE"),
+    )
+    whatsapp_template_name: str = Field(default="", validation_alias=AliasChoices("WHATSAPP_TEMPLATE_NAME"))
+    whatsapp_template_language: str = Field(default="es", validation_alias=AliasChoices("WHATSAPP_TEMPLATE_LANGUAGE"))
+    whatsapp_template_body_params_json: str = Field(
+        default="",
+        validation_alias=AliasChoices("WHATSAPP_TEMPLATE_BODY_PARAMS_JSON"),
+    )
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

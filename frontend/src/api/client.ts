@@ -198,6 +198,12 @@ export interface TarjetasBoardResponse {
   view?: string;
 }
 
+export interface TarjetaNotifyCreatedResponse {
+  status: 'sent' | 'skipped' | 'failed';
+  message?: string;
+  provider_message_id?: string | null;
+}
+
 export interface TarjetaMediaItem {
   id: number;
   tarjeta_id: number;
@@ -425,6 +431,14 @@ export const api = {
   async createTarjeta(data: TarjetaCreate): Promise<Tarjeta> {
     const res = await fetch(`${API_BASE}/api/tarjetas`, {
       method: 'POST', headers: jsonHeaders(), body: JSON.stringify(data),
+    });
+    await ensureOk(res);
+    return res.json();
+  },
+  async notifyTarjetaCreated(id: number): Promise<TarjetaNotifyCreatedResponse> {
+    const res = await fetch(`${API_BASE}/api/tarjetas/${id}/notify-created`, {
+      method: 'POST',
+      headers: jsonHeaders(),
     });
     await ensureOk(res);
     return res.json();

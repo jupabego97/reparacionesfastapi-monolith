@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models.kanban import Notification
 from app.models.repair_card import RepairCard
+from app.services.whatsapp_service import normalize_whatsapp_digits
 
 ESTADO_LABELS = {
     "ingresado": "Ingresado",
@@ -80,12 +81,9 @@ def notificar_cambio_estado(
 
 def generar_url_whatsapp(telefono: str, mensaje: str) -> str | None:
     """Genera URL de WhatsApp para notificar al cliente."""
-    if not telefono:
-        return None
-    digits = "".join(c for c in telefono if c.isdigit())
-    if len(digits) == 10 and digits.startswith("3"):
-        digits = "57" + digits
-    if len(digits) < 10:
+    digits = normalize_whatsapp_digits(telefono, "57")
+    if not digits:
         return None
     import urllib.parse
+
     return f"https://wa.me/{digits}?text={urllib.parse.quote(mensaje)}"

@@ -54,6 +54,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [successBanner, setSuccessBanner] = useState('');
 
   const { data: allTags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.getUsers });
@@ -211,6 +212,24 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
           setError('Tarjeta creada, pero algunas fotos no se pudieron subir');
         }
       }
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      let whatsappLine = '';
+      if (token) {
+        try {
+          const nr = await api.notifyTarjetaCreated(created.id);
+          if (nr.status === 'sent') whatsappLine = 'WhatsApp enviado al cliente.';
+          else if (nr.status === 'skipped') whatsappLine = nr.message || 'WhatsApp omitido (teléfono o configuración).';
+          else whatsappLine = nr.message || 'WhatsApp no se pudo enviar; puedes avisar manualmente.';
+        } catch {
+          whatsappLine = 'No se pudo completar el aviso por WhatsApp (sesión o servidor).';
+        }
+      }
+      if (whatsappLine) {
+        setSuccessBanner(whatsappLine);
+        await new Promise(r => requestAnimationFrame(() => r(null)));
+        await new Promise(r => setTimeout(r, 1600));
+      }
+      setSuccessBanner('');
       onSuccess?.();
       onClose();
     } catch {
@@ -228,6 +247,11 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
         <div className="modal-pro-body">
           {error && <div className="login-error"><i className="fas fa-exclamation-triangle"></i> {error}</div>}
+          {successBanner && (
+            <div className="login-error" style={{ background: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.5)', color: '#166534' }}>
+              <i className="fas fa-check-circle"></i> {successBanner}
+            </div>
+          )}
 
           {step === 'capture' && (
             <div className={`capture-step ${isMobile && cameraActive ? 'camera-fullscreen' : ''}`}>

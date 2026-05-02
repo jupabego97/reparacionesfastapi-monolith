@@ -9,7 +9,11 @@ from datetime import UTC
 
 import pytest
 from app.core.database import Base, SessionLocal, engine, get_db
+from app.core.limiter import limiter
 from app.main import app
+
+# Evita 429 en suites que hacen muchos POST /api/tarjetas
+limiter.enabled = False
 from app.models import (
     RepairCard,
     User,

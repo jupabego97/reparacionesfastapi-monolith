@@ -26,6 +26,7 @@ from app.models import (  # noqa: F401 — register all models with Base.metadat
     Comment,
     KanbanColumn,
     Notification,
+    OutboundMessage,
     RepairCard,
     RepairCardMedia,
     StatusHistory,

@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
+from loguru import logger
 from sqlalchemy import and_, delete, exists, func, insert, or_, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, defer
@@ -18,6 +19,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.kanban import Comment, KanbanColumn, SubTask, Tag, repair_card_tags
+from app.models.outbound_message import OutboundMessage
 from app.models.repair_card import RepairCard, RepairCardMedia, StatusHistory
 from app.models.user import User
 from app.schemas.tarjeta import (
@@ -31,6 +33,12 @@ from app.schemas.tarjeta import (
 from app.services.auth_service import get_current_user, get_current_user_optional, require_role
 from app.services.notification_service import notificar_cambio_estado
 from app.services.storage_service import get_storage_service
+from app.services.whatsapp_service import (
+    build_tarjeta_created_body,
+    is_whatsapp_send_configured,
+    normalize_whatsapp_digits,
+    send_whatsapp_message,
+)
 from app.socket_events import sio
 
 router = APIRouter(prefix="/api/tarjetas", tags=["tarjetas"])
@@ -540,6 +548,115 @@ def get_tarjeta_by_id(id: int, db: Session = Depends(get_db)):
     return _enrich_tarjeta(t, db, include_image=True)
 
 
+def _log_outbound(
+    db: Session,
+    *,
+    tarjeta_id: int,
+    recipient: str,
+    event: str,
+    status: str,
+    provider_message_id: str | None = None,
+    error: str | None = None,
+) -> OutboundMessage:
+    row = OutboundMessage(
+        tarjeta_id=tarjeta_id,
+        channel="whatsapp",
+        event=event,
+        recipient=recipient,
+        status=status,
+        provider_message_id=provider_message_id,
+        error=error,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.post("/{id}/notify-created")
+@limiter.limit("20 per minute")
+async def notify_tarjeta_created_whatsapp(
+    request: Request,
+    id: int,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Dispara WhatsApp al cliente tras crear la tarjeta (y fotos). Idempotente si ya se envió."""
+    settings = get_settings()
+    t = db.query(RepairCard).filter(RepairCard.id == id, RepairCard.deleted_at.is_(None)).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
+
+    already = (
+        db.query(OutboundMessage)
+        .filter(
+            OutboundMessage.tarjeta_id == id,
+            OutboundMessage.event == "tarjeta_created",
+            OutboundMessage.status == "sent",
+        )
+        .first()
+    )
+    if already:
+        return {
+            "status": "skipped",
+            "message": "Ya se envió WhatsApp para esta tarjeta",
+            "provider_message_id": already.provider_message_id,
+        }
+
+    cc = (settings.whatsapp_default_country_code or "57").strip().lstrip("+") or "57"
+    digits = normalize_whatsapp_digits(t.whatsapp_number, cc)
+    if not digits:
+        _log_outbound(
+            db,
+            tarjeta_id=id,
+            recipient="",
+            event="tarjeta_created",
+            status="skipped",
+            error="invalid_phone",
+        )
+        return {"status": "skipped", "message": "Teléfono WhatsApp inválido o vacío"}
+
+    if not is_whatsapp_send_configured(settings):
+        _log_outbound(
+            db,
+            tarjeta_id=id,
+            recipient=digits,
+            event="tarjeta_created",
+            status="skipped",
+            error="whatsapp_not_configured",
+        )
+        return {"status": "skipped", "message": "WhatsApp no está configurado en el servidor"}
+
+    body = build_tarjeta_created_body(t)
+    result = await send_whatsapp_message(settings, to_digits=digits, body_text=body, tarjeta=t)
+
+    if result.ok:
+        _log_outbound(
+            db,
+            tarjeta_id=id,
+            recipient=digits,
+            event="tarjeta_created",
+            status="sent",
+            provider_message_id=result.provider_message_id,
+        )
+        return {
+            "status": "sent",
+            "message": "Mensaje enviado",
+            "provider_message_id": result.provider_message_id,
+        }
+
+    err = result.error or "unknown_error"
+    _log_outbound(
+        db,
+        tarjeta_id=id,
+        recipient=digits,
+        event="tarjeta_created",
+        status="failed",
+        error=err[:2000] if err else None,
+    )
+    return {"status": "failed", "message": err}
+
+
 @router.post("", status_code=201)
 @limiter.limit("10 per minute")
 async def create_tarjeta(
@@ -623,8 +740,8 @@ async def create_tarjeta(
         for tag_id in data.tags:
             try:
                 db.execute(insert(repair_card_tags).values(repair_card_id=t.id, tag_id=tag_id))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("No se pudo asociar tag_id={} a tarjeta_id={}: {}", tag_id, t.id, e)
         db.commit()
 
     if uploaded_media_bootstrap:
@@ -1173,7 +1290,6 @@ async def upload_tarjeta_media(
         started = time.perf_counter()
         upload = storage.upload_bytes_required(file_data, mime, ALLOWED_MEDIA_MIME[mime])
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
-        from loguru import logger
         logger.bind(
             storage="R2",
             bucket=storage._bucket,
