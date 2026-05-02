@@ -169,6 +169,45 @@ def _reject_postgresql_missing_host(canonical_url: str) -> None:
     )
 
 
+def _postgres_url_from_pg_env() -> str | None:
+    """Reconstruye DATABASE_URL desde variables PG* si Railway las expone por referencia."""
+    host = (
+        os.environ.get("PGHOST")
+        or os.environ.get("POSTGRES_HOST")
+        or os.environ.get("DATABASE_HOST")
+        or ""
+    ).strip()
+    if not host:
+        return None
+
+    user = (os.environ.get("PGUSER") or os.environ.get("POSTGRES_USER") or "postgres").strip()
+    password = (os.environ.get("PGPASSWORD") or os.environ.get("POSTGRES_PASSWORD") or "").strip()
+    database = (os.environ.get("PGDATABASE") or os.environ.get("POSTGRES_DB") or "railway").strip()
+    port_raw = (
+        os.environ.get("PGPORT")
+        or os.environ.get("POSTGRES_PORT")
+        or os.environ.get("RAILWAY_TCP_PROXY_PORT")
+        or ""
+    ).strip()
+    try:
+        port = int(port_raw) if port_raw else None
+    except ValueError:
+        port = None
+
+    hlow = host.lower()
+    query = {"sslmode": "require"} if hlow.endswith(".proxy.rlwy.net") else {}
+    u = URL.create(
+        drivername="postgresql",
+        username=user or None,
+        password=password or None,
+        host=host,
+        port=port,
+        database=database or "railway",
+        query=query,
+    )
+    return u.render_as_string(hide_password=False)
+
+
 def _raise_if_railway_db_points_to_this_service(url: str) -> None:
     """Railway: DATABASE_URL mal referenciado suele apuntar a `web.railway.internal` (esta app), no a Postgres."""
     srv = (os.environ.get("RAILWAY_SERVICE_NAME") or "").strip().lower()
@@ -188,6 +227,7 @@ def _raise_if_railway_db_points_to_this_service(url: str) -> None:
 def get_database_url() -> str:
     raw = _normalize_database_url(get_settings().database_url)
     _raise_if_railway_db_points_to_this_service(raw)
+    pg_env_url = _postgres_url_from_pg_env()
 
     if not raw.startswith("postgresql"):
         return raw
@@ -198,7 +238,11 @@ def get_database_url() -> str:
         make_url(coerced)
         _reject_postgresql_missing_host(coerced)
         return coerced
-    except (ValueError, SAArgumentError):
+    except (ValueError, SAArgumentError, RuntimeError):
+        if pg_env_url:
+            make_url(pg_env_url)
+            _reject_postgresql_missing_host(pg_env_url)
+            return pg_env_url
         rescued = _rescue_postgresql_url(raw)
         coerced = _ensure_railway_default_database(rescued)
         make_url(coerced)
