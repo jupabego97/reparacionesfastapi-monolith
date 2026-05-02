@@ -1,5 +1,7 @@
-import { memo } from 'react';
+import { memo, useCallback, type SyntheticEvent } from 'react';
 import type { TarjetaBoardItem, KanbanColumn } from '../api/client';
+import { dueDateLabel } from '../utils/dueDateLabel';
+import { clientRepairWhatsAppUrl } from '../utils/whatsappUrl';
 
 interface Props {
   tarjeta: TarjetaBoardItem;
@@ -30,105 +32,207 @@ function timeColor(days: number): string {
   return '#ef4444';
 }
 
-function isOverdue(fechaLimite: string | null): boolean {
-  if (!fechaLimite) return false;
-  return new Date(fechaLimite) < new Date();
+function notifyCreadaMeta(status: string | null | undefined): { label: string; className: string } | null {
+  if (!status) return null;
+  const s = status.toLowerCase();
+  if (s === 'sent') return { label: 'WA creada', className: 'notify-pill notify-pill--sent' };
+  if (s === 'skipped') return { label: 'WA omitida', className: 'notify-pill notify-pill--skipped' };
+  if (s === 'failed') return { label: 'WA error', className: 'notify-pill notify-pill--failed' };
+  return null;
 }
 
-function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, onMove, compact, selectable, selected, onSelect, dragHandleProps, isDragging }: Props) {
+function TarjetaCardComponent({
+  tarjeta,
+  columnas,
+  onEdit,
+  onDelete: _onDelete,
+  onMove,
+  compact,
+  selectable,
+  selected,
+  onSelect,
+  dragHandleProps,
+  isDragging,
+}: Props) {
   const t = tarjeta;
   const prio = PRIORITY_CONFIG[t.prioridad] || PRIORITY_CONFIG.media;
-  const overdue = isOverdue(t.fecha_limite);
+  const due = dueDateLabel(t.fecha_limite);
   const daysColor = timeColor(t.dias_en_columna || 0);
-  const whatsNum = t.whatsapp ? t.whatsapp.replace(/\D/g, '') : null;
-  const whatsUrl = whatsNum
-    ? `https://wa.me/${whatsNum}?text=${encodeURIComponent(`Hola ${t.nombre_propietario || ''}, le escribimos de Nanotronics respecto a su equipo en reparacion.`.trim())}`
-    : null;
+  const whatsUrl = clientRepairWhatsAppUrl(t.whatsapp, t.nombre_propietario);
   const isBlocked = !!t.bloqueada;
   const notaTecnica = t.notas_tecnicas_resumen || t.notas_tecnicas || '';
+  const notifyMeta = notifyCreadaMeta(t.notify_creada_estado);
 
-  // Column arrow navigation (disabled for blocked cards)
   const canMove = !isBlocked;
   const colIndex = columnas.findIndex(c => c.key === t.columna);
   const prevCol = canMove && colIndex > 0 ? columnas[colIndex - 1] : null;
   const nextCol = canMove && colIndex < columnas.length - 1 ? columnas[colIndex + 1] : null;
 
+  const openEdit = useCallback(() => onEdit(t), [onEdit, t]);
+
+  const stop = (e: SyntheticEvent) => e.stopPropagation();
+
   if (compact) {
     const compactThumb = t.cover_thumb_url || t.imagen_url || '';
     return (
-      <div
-        className={`tarjeta-card compact ${overdue ? 'overdue' : ''} ${isBlocked ? 'blocked' : ''} ${isDragging ? 'dragging' : ''}`}
-        onClick={() => onEdit(t)}
+      <article
+        className={`tarjeta-card compact ${due.severity === 'overdue' ? 'overdue' : ''} ${isBlocked ? 'blocked' : ''} ${isDragging ? 'dragging' : ''}`}
+        onClick={openEdit}
         tabIndex={0}
         role="button"
-        onKeyDown={e => { if (e.key === 'Enter') onEdit(t); }}
+        aria-label={`Reparación #${t.id}, ${t.nombre_propietario || 'Cliente'}`}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            openEdit();
+          }
+        }}
       >
         <div className="tarjeta-compact-row">
           {dragHandleProps && (
-            <span className="drag-handle-compact" {...dragHandleProps} onClick={e => e.stopPropagation()}><i className="fas fa-grip-vertical"></i></span>
+            <span
+              className="drag-handle-compact"
+              {...dragHandleProps}
+              onClick={stop}
+              onKeyDown={e => e.stopPropagation()}
+            >
+              <i className="fas fa-grip-vertical"></i>
+            </span>
           )}
           {compactThumb && (
             <img
               src={compactThumb}
-              alt="Equipo"
+              alt=""
               className="tarjeta-compact-thumb"
               loading="lazy"
-              onClick={e => { e.stopPropagation(); window.open(t.imagen_url || t.cover_thumb_url || '', '_blank', 'noopener,noreferrer'); }}
-              style={{ cursor: 'pointer' }}
+              onClick={e => {
+                stop(e);
+                window.open(t.imagen_url || t.cover_thumb_url || '', '_blank', 'noopener,noreferrer');
+              }}
             />
           )}
-          <span className="priority-dot" style={{ background: prio.color }}></span>
+          <span className="priority-dot" style={{ background: prio.color }} title={`Prioridad ${prio.label}`} />
+          <span className="tarjeta-folio-compact">#{t.id}</span>
           <span className="tarjeta-name">{t.nombre_propietario || 'Cliente'}</span>
-          {t.asignado_nombre && <span className="assigned-badge" title={t.asignado_nombre}>{t.asignado_nombre[0]}</span>}
+          {t.asignado_nombre && (
+            <span className="assigned-badge" title={t.asignado_nombre}>
+              {t.asignado_nombre[0]}
+            </span>
+          )}
           <div className="tarjeta-compact-actions">
-            {t.tags?.length > 0 && <span className="tag-count">{t.tags.length} <i className="fas fa-tags"></i></span>}
-            {whatsUrl && <a href={whatsUrl} target="_blank" rel="noopener noreferrer" className="btn-wa-sm" onClick={e => e.stopPropagation()} title="WhatsApp"><i className="fab fa-whatsapp"></i></a>}
+            {notifyMeta && (
+              <span className={notifyMeta.className} title="Aviso WhatsApp al crear tarjeta">
+                {notifyMeta.label}
+              </span>
+            )}
+            {t.tags?.length > 0 && (
+              <span className="tag-count">
+                {t.tags.length} <i className="fas fa-tags"></i>
+              </span>
+            )}
+            {whatsUrl && (
+              <a
+                href={whatsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-wa-sm"
+                onClick={stop}
+                title="WhatsApp"
+                aria-label="Abrir WhatsApp con el cliente"
+              >
+                <i className="fab fa-whatsapp"></i>
+              </a>
+            )}
             <div className="tarjeta-compact-arrows">
               {prevCol && (
-                <button className="btn-action btn-col-arrow btn-col-arrow-sm" onClick={e => { e.stopPropagation(); onMove(t.id, prevCol.key); }}
-                  title={`Mover a ${prevCol.title}`} aria-label={`Mover a ${prevCol.title}`}
-                  style={{ borderColor: prevCol.color, color: prevCol.color }}>
+                <button
+                  type="button"
+                  className="btn-action btn-col-arrow btn-col-arrow-sm"
+                  onClick={e => {
+                    stop(e);
+                    onMove(t.id, prevCol.key);
+                  }}
+                  title={`Mover a ${prevCol.title}`}
+                  aria-label={`Mover a ${prevCol.title}`}
+                  style={{ borderColor: prevCol.color, color: prevCol.color }}
+                >
                   <i className="fas fa-chevron-left"></i>
                 </button>
               )}
               {nextCol && (
-                <button className="btn-action btn-col-arrow btn-col-arrow-sm" onClick={e => { e.stopPropagation(); onMove(t.id, nextCol.key); }}
-                  title={`Mover a ${nextCol.title}`} aria-label={`Mover a ${nextCol.title}`}
-                  style={{ borderColor: nextCol.color, color: nextCol.color }}>
+                <button
+                  type="button"
+                  className="btn-action btn-col-arrow btn-col-arrow-sm"
+                  onClick={e => {
+                    stop(e);
+                    onMove(t.id, nextCol.key);
+                  }}
+                  title={`Mover a ${nextCol.title}`}
+                  aria-label={`Mover a ${nextCol.title}`}
+                  style={{ borderColor: nextCol.color, color: nextCol.color }}
+                >
                   <i className="fas fa-chevron-right"></i>
                 </button>
               )}
             </div>
           </div>
         </div>
-      </div>
+      </article>
     );
   }
 
+  const dueClass =
+    due.severity === 'overdue'
+      ? 'tarjeta-due-label--overdue'
+      : due.severity === 'today' || due.severity === 'tomorrow'
+        ? 'tarjeta-due-label--urgent'
+        : due.severity === 'soon'
+          ? 'tarjeta-due-label--soon'
+          : 'tarjeta-due-label--ok';
+
   return (
-    <div
-      className={`tarjeta-card ${overdue ? 'overdue' : ''} ${isBlocked ? 'blocked' : ''} ${selected ? 'card-selected' : ''} ${isDragging ? 'dragging' : ''}`}
+    <article
+      className={`tarjeta-card tarjeta-card-pro ${due.severity === 'overdue' ? 'overdue' : ''} ${isBlocked ? 'blocked' : ''} ${selected ? 'card-selected' : ''} ${isDragging ? 'dragging' : ''}`}
       tabIndex={0}
       role="button"
-      aria-label={`Tarjeta de ${t.nombre_propietario || 'Cliente'}`}
+      aria-pressed={selectable ? selected : undefined}
+      aria-label={`Reparación número ${t.id}, ${t.nombre_propietario || 'Cliente'}. ${due.text}.`}
+      onClick={openEdit}
       onKeyDown={e => {
-        if (e.key === 'Enter') onEdit(t);
+        if (e.key === 'Enter' || (e.key === ' ' && !selectable)) {
+          e.preventDefault();
+          openEdit();
+        }
         if (e.key === ' ' && selectable) {
           e.preventDefault();
           onSelect?.(t.id);
         }
       }}
     >
-      <div className="priority-strip" style={{ background: isBlocked ? '#ef4444' : prio.color }}></div>
+      <div className="priority-strip" style={{ background: isBlocked ? '#ef4444' : prio.color }} />
 
       {dragHandleProps && (
-        <div className="drag-handle" {...dragHandleProps} aria-label="Arrastrar tarjeta">
+        <div
+          className="drag-handle"
+          {...dragHandleProps}
+          aria-label="Arrastrar tarjeta"
+          onClick={stop}
+        >
           <i className="fas fa-grip-vertical"></i>
         </div>
       )}
 
       {selectable && (
-        <div className="card-checkbox" onClick={e => { e.stopPropagation(); onSelect?.(t.id); }}>
+        <div
+          className="card-checkbox"
+          role="checkbox"
+          aria-checked={selected}
+          tabIndex={-1}
+          onClick={e => {
+            stop(e);
+            onSelect?.(t.id);
+          }}
+        >
           <i className={selected ? 'fas fa-check-square' : 'far fa-square'}></i>
         </div>
       )}
@@ -139,42 +243,97 @@ function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, 
         </div>
       )}
 
-      <div className="tarjeta-header">
-        <div className="tarjeta-title-row">
-          <i className={prio.icon} style={{ color: prio.color, fontSize: '0.75rem' }} title={`Prioridad ${prio.label}`}></i>
-          <strong className="tarjeta-name" onClick={() => onEdit(t)}>{t.nombre_propietario || 'Cliente'}</strong>
+      <header className="tarjeta-header-pro">
+        <div className="tarjeta-header-top">
+          <span className="tarjeta-folio" title="Folio">
+            #{t.id}
+          </span>
+          {notifyMeta && (
+            <span className={notifyMeta.className} title="Estado del aviso automático al crear la tarjeta">
+              {notifyMeta.label}
+            </span>
+          )}
+        </div>
+        <div className="tarjeta-title-block">
+          <i className={prio.icon} style={{ color: prio.color }} title={`Prioridad ${prio.label}`} />
+          <strong className="tarjeta-name-pro">{t.nombre_propietario || 'Cliente'}</strong>
         </div>
         <div className="tarjeta-meta">
           {t.asignado_nombre && (
             <span className="assigned-badge" title={`Asignado: ${t.asignado_nombre}`} style={{ background: '#6366f1' }}>
-              {t.asignado_nombre.split(' ').map(w => w[0]).join('').slice(0, 2)}
-            </span>
-          )}
-          {t.dias_en_columna > 0 && (
-            <span className="days-badge" style={{ color: daysColor }} title={`${t.dias_en_columna} dias en esta columna`}>
-              <i className="fas fa-clock"></i> {t.dias_en_columna}d
+              {t.asignado_nombre
+                .split(' ')
+                .map(w => w[0])
+                .join('')
+                .slice(0, 2)}
             </span>
           )}
         </div>
+      </header>
+
+      <div className="tarjeta-signals" onClick={stop}>
+        <span className={`tarjeta-due-label ${dueClass}`} title={due.iso ? `Fecha límite: ${due.iso}` : undefined}>
+          <i className="fas fa-calendar-alt" aria-hidden="true"></i> {due.text}
+        </span>
+        {t.dias_en_columna > 0 && (
+          <span className="days-badge" style={{ color: daysColor }} title={`${t.dias_en_columna} días en esta columna`}>
+            <i className="fas fa-clock"></i> {t.dias_en_columna}d
+          </span>
+        )}
       </div>
 
+      {(prevCol || nextCol) && (
+        <div className="tarjeta-mobile-arrows" onClick={stop}>
+          {prevCol && (
+            <button
+              type="button"
+              className="btn-col-arrow"
+              onClick={() => onMove(t.id, prevCol.key)}
+              title={`Mover a ${prevCol.title}`}
+              aria-label={`Mover a columna ${prevCol.title}`}
+              style={{ borderColor: prevCol.color, color: prevCol.color }}
+            >
+              <i className="fas fa-arrow-left" aria-hidden="true"></i>
+              <span>{prevCol.title}</span>
+            </button>
+          )}
+          {nextCol && (
+            <button
+              type="button"
+              className="btn-col-arrow"
+              onClick={() => onMove(t.id, nextCol.key)}
+              title={`Mover a ${nextCol.title}`}
+              aria-label={`Mover a columna ${nextCol.title}`}
+              style={{ borderColor: nextCol.color, color: nextCol.color }}
+            >
+              <span>{nextCol.title}</span>
+              <i className="fas fa-arrow-right" aria-hidden="true"></i>
+            </button>
+          )}
+        </div>
+      )}
+
       {(t.problema_resumen || t.problema) && (t.problema || t.problema_resumen) !== 'Sin descripcion' && (
-        <p className="tarjeta-problem" aria-label="Problema reportado">
-          <strong>Problema:</strong> {t.problema_resumen || (t.problema!.length > 80 ? t.problema!.slice(0, 80) + '...' : t.problema)}
+        <p className="tarjeta-problem-pro" aria-label="Problema reportado">
+          {t.problema_resumen || (t.problema!.length > 100 ? `${t.problema!.slice(0, 100)}…` : t.problema)}
         </p>
       )}
 
       {notaTecnica && (
-        <div className="tarjeta-notas-tecnicas" aria-label="Notas técnicas">
+        <div className="tarjeta-notas-tecnicas" aria-label="Notas técnicas" onClick={stop}>
           <i className="fas fa-wrench"></i>
-          <span><strong>Notas técnicas:</strong> {notaTecnica}</span>
+          <span>{notaTecnica}</span>
         </div>
       )}
 
       {t.tags && t.tags.length > 0 && (
-        <div className="tarjeta-tags">
+        <div className="tarjeta-tags" onClick={stop}>
           {t.tags.map(tag => (
-            <span key={tag.id} className="tag-chip" style={{ background: tag.color + '22', color: tag.color, borderColor: tag.color + '44' }}>
+            <span
+              key={tag.id}
+              className="tag-chip"
+              style={{ background: `${tag.color}22`, color: tag.color, borderColor: `${tag.color}44` }}
+            >
               {tag.name}
             </span>
           ))}
@@ -182,31 +341,36 @@ function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, 
       )}
 
       {t.subtasks_total > 0 && (
-        <div className="subtasks-progress">
+        <div className="subtasks-progress" onClick={stop}>
           <div className="subtasks-bar">
             <div className="subtasks-fill" style={{ width: `${(t.subtasks_done / t.subtasks_total) * 100}%` }}></div>
           </div>
-          <span className="subtasks-text">{t.subtasks_done}/{t.subtasks_total}</span>
+          <span className="subtasks-text">
+            {t.subtasks_done}/{t.subtasks_total}
+          </span>
         </div>
       )}
 
       {(t.cover_thumb_url || t.imagen_url) && (
         <img
           src={t.cover_thumb_url || t.imagen_url || ''}
-          alt="Equipo"
+          alt="Foto del equipo"
           className="tarjeta-thumbnail"
           loading="lazy"
-          onClick={e => { e.stopPropagation(); window.open(t.imagen_url || t.cover_thumb_url || '', '_blank', 'noopener,noreferrer'); }}
+          onClick={e => {
+            stop(e);
+            window.open(t.imagen_url || t.cover_thumb_url || '', '_blank', 'noopener,noreferrer');
+          }}
         />
       )}
 
-      {/* Flechas de columna: overlay fijo en esquina superior derecha */}
       {(prevCol || nextCol) && (
-        <div className="tarjeta-col-arrows-overlay">
+        <div className="tarjeta-col-arrows-overlay" onClick={stop}>
           {prevCol && (
             <button
+              type="button"
               className="btn-col-arrow-overlay"
-              onClick={e => { e.stopPropagation(); onMove(t.id, prevCol.key); }}
+              onClick={() => onMove(t.id, prevCol.key)}
               title={`← ${prevCol.title}`}
               aria-label={`Mover a ${prevCol.title}`}
               style={{ '--arrow-color': prevCol.color } as React.CSSProperties}
@@ -216,8 +380,9 @@ function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, 
           )}
           {nextCol && (
             <button
+              type="button"
               className="btn-col-arrow-overlay"
-              onClick={e => { e.stopPropagation(); onMove(t.id, nextCol.key); }}
+              onClick={() => onMove(t.id, nextCol.key)}
               title={`${nextCol.title} →`}
               aria-label={`Mover a ${nextCol.title}`}
               style={{ '--arrow-color': nextCol.color } as React.CSSProperties}
@@ -228,15 +393,18 @@ function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, 
         </div>
       )}
 
-      <div className="tarjeta-footer">
+      <footer className="tarjeta-footer tarjeta-footer-pro" onClick={stop}>
         <div className="tarjeta-footer-left">
-          {t.fecha_limite && (
-            <span className={`date-badge ${overdue ? 'overdue' : ''}`}>
-              <i className="fas fa-calendar-alt"></i> {t.fecha_limite}
+          {t.tiene_cargador === 'si' && (
+            <span className="charger-badge" title="Con cargador">
+              <i className="fas fa-plug"></i>
             </span>
           )}
-          {t.tiene_cargador === 'si' && <span className="charger-badge" title="Con cargador"><i className="fas fa-plug"></i></span>}
-          {t.comments_count > 0 && <span className="comments-badge"><i className="fas fa-comment"></i> {t.comments_count}</span>}
+          {t.comments_count > 0 && (
+            <span className="comments-badge">
+              <i className="fas fa-comment"></i> {t.comments_count}
+            </span>
+          )}
           {t.costo_estimado != null && (
             <span className="cost-badge" title={`Estimado: $${t.costo_estimado.toLocaleString()}`}>
               <i className="fas fa-dollar-sign"></i>
@@ -245,16 +413,33 @@ function TarjetaCardComponent({ tarjeta, columnas, onEdit, onDelete: _onDelete, 
         </div>
         <div className="tarjeta-footer-right">
           {whatsUrl && (
-            <a href={whatsUrl} target="_blank" rel="noopener noreferrer" className="btn-wa-action btn-wa-big" title="Escribir por WhatsApp" onClick={e => e.stopPropagation()}>
-              <i className="fab fa-whatsapp"></i> WhatsApp
+            <a
+              href={whatsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-wa-icon"
+              title="WhatsApp al cliente"
+              aria-label="Abrir WhatsApp con mensaje para el cliente"
+              onClick={stop}
+            >
+              <i className="fab fa-whatsapp"></i>
             </a>
           )}
-          <button className="btn-action btn-edit" onClick={() => onEdit(t)} title="Editar" aria-label="Editar tarjeta">
+          <button
+            type="button"
+            className="btn-action btn-edit"
+            onClick={e => {
+              stop(e);
+              openEdit();
+            }}
+            title="Abrir detalle"
+            aria-label="Abrir detalle de la tarjeta"
+          >
             <i className="fas fa-pen"></i>
           </button>
         </div>
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }
 

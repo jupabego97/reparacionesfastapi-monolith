@@ -38,6 +38,8 @@ export interface TarjetaBoardItem {
   motivo_bloqueo?: string | null;
   bloqueada_por?: number | null;
   fecha_bloqueo?: string | null;
+  /** Último estado del aviso WhatsApp al crear (sent/skipped/failed); undefined si nunca se intentó */
+  notify_creada_estado?: string | null;
 }
 
 export interface TarjetaDetail extends TarjetaBoardItem {

@@ -166,8 +166,21 @@ export default function App() {
   const [undoAction, setUndoAction] = useState<{ cardId: number; oldCol: string; msg: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [boardMenuOpen, setBoardMenuOpen] = useState(false);
+  const boardMenuRef = useRef<HTMLDivElement | null>(null);
   const [activeSavedViewId, setActiveSavedViewId] = useState<string>('');
   const hasAppliedDefaultViewRef = useRef(false);
+
+  useEffect(() => {
+    if (!boardMenuOpen) return;
+    const onDown = (ev: MouseEvent) => {
+      if (boardMenuRef.current && !boardMenuRef.current.contains(ev.target as Node)) {
+        setBoardMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [boardMenuOpen]);
 
   const { data: preferences = DEFAULT_PREFERENCES } = useQuery<UserPreferences>({
     queryKey: ['preferences'],
@@ -597,35 +610,76 @@ export default function App() {
               <i className="fas fa-calendar-alt"></i> Calendario
             </button>
           </div>
-          <span className="shortcuts-hint toolbar-secondary" title="N = Nueva | E = Estadisticas | X = Exportar | / = Buscar | Esc = Cerrar">
-            <i className="fas fa-keyboard"></i> Atajos
-          </span>
-          <select
-            className="header-select toolbar-secondary"
-            value={activeSavedViewId}
-            onChange={e => applySavedView(e.target.value)}
-            aria-label="Vistas guardadas"
+          <button
+            type="button"
+            className={`toolbar-btn ${compactView ? 'active' : ''}`}
+            onClick={() => setCompactView(!compactView)}
+            title="Vista compacta"
+            aria-label="Alternar vista compacta"
           >
-            <option value="">Vistas guardadas</option>
-            {preferences.saved_views.map(v => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
-          <button className="toolbar-btn toolbar-secondary" onClick={saveCurrentView} aria-label="Guardar vista actual">
-            <i className="fas fa-save"></i> Guardar vista
-          </button>
-          <button className="toolbar-btn toolbar-secondary" disabled={!activeSavedViewId} onClick={removeSavedView} aria-label="Eliminar vista guardada">
-            <i className="fas fa-trash"></i> Eliminar vista
-          </button>
-          <select className="header-select toolbar-secondary" value={groupBy} onChange={e => setGroupBy(e.target.value)} title="Agrupar por" aria-label="Agrupar tarjetas">
-            <option value="none">Sin agrupar</option>
-            <option value="priority">Por prioridad</option>
-            <option value="assignee">Por tecnico</option>
-          </select>
-          <button className={`toolbar-btn ${compactView ? 'active' : ''}`} onClick={() => setCompactView(!compactView)}
-            title="Vista compacta" aria-label="Alternar vista compacta">
             <i className={compactView ? 'fas fa-th-list' : 'fas fa-th-large'}></i> <span className="btn-text">Compacta</span>
           </button>
+          <div className="toolbar-menu-wrap" ref={boardMenuRef}>
+            <button
+              type="button"
+              className="toolbar-btn"
+              aria-haspopup="menu"
+              aria-expanded={boardMenuOpen}
+              aria-controls="board-toolbar-menu"
+              onClick={() => setBoardMenuOpen(o => !o)}
+              title="Vistas, agrupación y atajos"
+            >
+              <i className="fas fa-sliders-h"></i> <span className="btn-text">Tablero</span>
+            </button>
+            {boardMenuOpen && (
+              <div id="board-toolbar-menu" className="toolbar-board-dropdown" role="menu">
+                <div className="toolbar-dropdown-section" role="none">
+                  <span className="toolbar-dropdown-label">Atajos de teclado</span>
+                  <p className="toolbar-dropdown-hint">N Nueva · E Estadísticas · X Exportar · / Buscar · Esc Cerrar</p>
+                </div>
+                <label className="toolbar-dropdown-label" htmlFor="saved-view-select">Vista guardada</label>
+                <select
+                  id="saved-view-select"
+                  className="header-select toolbar-dropdown-select"
+                  value={activeSavedViewId}
+                  onChange={e => {
+                    applySavedView(e.target.value);
+                    setBoardMenuOpen(false);
+                  }}
+                  aria-label="Vistas guardadas"
+                >
+                  <option value="">Elegir vista…</option>
+                  {preferences.saved_views.map(v => (
+                    <option key={v.id} value={v.id}>{v.name}</option>
+                  ))}
+                </select>
+                <div className="toolbar-dropdown-actions">
+                  <button type="button" className="toolbar-dropdown-btn" role="menuitem" onClick={() => { saveCurrentView(); setBoardMenuOpen(false); }}>
+                    <i className="fas fa-save"></i> Guardar vista actual
+                  </button>
+                  <button type="button" className="toolbar-dropdown-btn" role="menuitem" disabled={!activeSavedViewId} onClick={() => { removeSavedView(); setBoardMenuOpen(false); }}>
+                    <i className="fas fa-trash"></i> Eliminar vista
+                  </button>
+                </div>
+                <label className="toolbar-dropdown-label" htmlFor="group-by-select">Agrupar por</label>
+                <select
+                  id="group-by-select"
+                  className="header-select toolbar-dropdown-select"
+                  value={groupBy}
+                  onChange={e => {
+                    setGroupBy(e.target.value);
+                    setBoardMenuOpen(false);
+                  }}
+                  title="Agrupar por"
+                  aria-label="Agrupar tarjetas"
+                >
+                  <option value="none">Sin agrupar</option>
+                  <option value="priority">Por prioridad</option>
+                  <option value="assignee">Por técnico</option>
+                </select>
+              </div>
+            )}
+          </div>
         </div>
         <div className="toolbar-right">
           <button className={`toolbar-btn ${selectMode ? 'active' : ''}`}
@@ -712,10 +766,26 @@ export default function App() {
 
       {showActivity && <ActivityFeed onClose={() => setShowActivity(false)} />}
 
-      <button className="mobile-fab-new" onClick={() => setShowNew(true)} title="Nueva reparacion" aria-label="Crear nueva reparacion">
-        <i className="fas fa-plus"></i>
-        <span>Nueva Reparación</span>
-      </button>
+      {isMobile && viewMode === 'kanban' && (
+        <nav className="mobile-board-nav" aria-label="Acciones rápidas del tablero">
+          <button type="button" onClick={() => setShowNew(true)} aria-label="Nueva reparación">
+            <i className="fas fa-plus"></i>
+            <span>Nueva</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => document.getElementById('board-search-input')?.focus()}
+            aria-label="Buscar"
+          >
+            <i className="fas fa-search"></i>
+            <span>Buscar</span>
+          </button>
+          <button type="button" onClick={() => window.dispatchEvent(new CustomEvent('board-open-filters'))} aria-label="Abrir filtros">
+            <i className="fas fa-sliders-h"></i>
+            <span>Filtros</span>
+          </button>
+        </nav>
+      )}
 
       <Suspense fallback={null}>
         {showNew && (

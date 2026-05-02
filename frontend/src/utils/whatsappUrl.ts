@@ -14,3 +14,14 @@ export function toWhatsAppUrl(raw: string | null | undefined): string | null {
   const num = toWhatsAppNumber(raw)
   return num ? `https://wa.me/${num}` : null
 }
+
+/** wa.me con mensaje prellenado (normaliza CO igual que toWhatsAppNumber). */
+export function clientRepairWhatsAppUrl(
+  raw: string | null | undefined,
+  nombreCliente: string | null | undefined,
+): string | null {
+  const num = toWhatsAppNumber(raw)
+  if (!num) return null
+  const text = `Hola ${nombreCliente || ''}, le escribimos de Nanotronics respecto a su equipo en reparacion.`.trim()
+  return `https://wa.me/${num}?text=${encodeURIComponent(text)}`
+}

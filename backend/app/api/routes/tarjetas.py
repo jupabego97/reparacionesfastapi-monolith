@@ -144,6 +144,26 @@ def _media_cover_map(db: Session, card_ids: list[int]) -> tuple[dict[int, str | 
     return cover_map, count_map
 
 
+def _latest_notify_creada_estado_by_card(db: Session, card_ids: list[int]) -> dict[int, str]:
+    """Último estado de mensaje WhatsApp `tarjeta_created` por tarjeta (sent/skipped/failed)."""
+    if not card_ids:
+        return {}
+    rows = (
+        db.query(OutboundMessage)
+        .filter(
+            OutboundMessage.tarjeta_id.in_(card_ids),
+            OutboundMessage.event == "tarjeta_created",
+        )
+        .order_by(OutboundMessage.tarjeta_id.asc(), OutboundMessage.created_at.desc())
+        .all()
+    )
+    out: dict[int, str] = {}
+    for r in rows:
+        if r.tarjeta_id not in out:
+            out[r.tarjeta_id] = r.status
+    return out
+
+
 def _enrich_tarjeta(t: RepairCard, db: Session, include_image: bool = True) -> dict:
     """Enriquece una sola tarjeta (para endpoints de detalle)."""
     d = t.to_dict(include_image=include_image)
@@ -173,6 +193,16 @@ def _enrich_tarjeta(t: RepairCard, db: Session, include_image: bool = True) -> d
         for m in media_rows[:3]
     ]
     d["dias_en_columna"] = _calcular_dias_en_columna(t)
+    latest = (
+        db.query(OutboundMessage)
+        .filter(
+            OutboundMessage.tarjeta_id == t.id,
+            OutboundMessage.event == "tarjeta_created",
+        )
+        .order_by(OutboundMessage.created_at.desc())
+        .first()
+    )
+    d["notify_creada_estado"] = latest.status if latest else None
     return d
 
 
@@ -234,6 +264,8 @@ def _enrich_batch(items: list[RepairCard], db: Session, include_image: bool = Tr
     ).group_by(Comment.tarjeta_id).all():
         comment_counts[row[0]] = row[1]
 
+    notify_estado = _latest_notify_creada_estado_by_card(db, card_ids)
+
     result = []
     for t in items:
         d = t.to_dict(include_image=include_image)
@@ -244,6 +276,7 @@ def _enrich_batch(items: list[RepairCard], db: Session, include_image: bool = Tr
         d["cover_thumb_url"] = cover_map.get(t.id) or legacy_http_cover_map.get(t.id) or (t.image_url if include_image else None)
         d["media_count"] = media_count_map.get(t.id, 0)
         d["dias_en_columna"] = _calcular_dias_en_columna(t)
+        d["notify_creada_estado"] = notify_estado.get(t.id)
         result.append(d)
     return result
 
@@ -281,6 +314,7 @@ def _serialize_board_items(items: list[RepairCard], db: Session, include_image: 
             "cover_thumb_url": cover_thumb,
             "media_count": item.get("media_count", 0),
             "imagen_url": cover_thumb,
+            "notify_creada_estado": item.get("notify_creada_estado"),
         })
     return compact
 

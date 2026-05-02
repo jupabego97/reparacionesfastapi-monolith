@@ -42,6 +42,28 @@ const kanbanCollision: CollisionDetection = (args) => {
   return closestCenter(args);
 };
 
+function isDueOverdue(fechaLimite: string | null | undefined): boolean {
+  if (!fechaLimite || !String(fechaLimite).trim()) return false;
+  const s = String(fechaLimite).trim().slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (!m) return false;
+  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  dt.setHours(0, 0, 0, 0);
+  return dt < today;
+}
+
+function columnEmptyHint(colKey: string, colTitle: string): string {
+  const known: Record<string, string> = {
+    ingresado: 'Sin ingresos. Crea una reparación o arrastra una tarjeta aquí.',
+    diagnosticada: 'Nada en diagnóstico por ahora.',
+    para_entregar: 'Nada listo para entregar.',
+    listos: 'Sin entregas en esta columna.',
+  };
+  return known[colKey] || `No hay tarjetas en «${colTitle}». Arrastra aquí para moverlas.`;
+}
+
 // Droppable column wrapper — registers each column as a drop target
 function DroppableColumn({ id, children }: { id: string; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id });
@@ -100,7 +122,8 @@ function VirtualizedColumnList({
           {cards.length === 0 && (
             <div className="kanban-empty">
               <i className="fas fa-inbox" style={{ color: col.color, opacity: 0.3 }}></i>
-              <span>Arrastra aquí</span>
+              <span className="kanban-empty-title">Sin tarjetas</span>
+              <span className="kanban-empty-hint">{columnEmptyHint(col.key, col.title)}</span>
             </div>
           )}
           {cards.length > 0 && (
@@ -437,21 +460,45 @@ export default function KanbanBoard({
         {columnas.map(col => {
           const cards = tarjetasPorColumna[col.key] || [];
           const wipExceeded = col.wip_limit != null && cards.length > col.wip_limit;
+          const wipWarn = col.wip_limit != null && !wipExceeded && cards.length >= col.wip_limit - 1 && col.wip_limit > 1;
           const isOverTarget = overColumn === col.key;
+          const overdueN = cards.filter(c => isDueOverdue(c.fecha_limite)).length;
+          const altaN = cards.filter(c => c.prioridad === 'alta').length;
+          const blockedN = cards.filter(c => c.bloqueada).length;
 
           return (
-            <div key={col.key} className={`kanban-column ${isOverTarget ? 'drag-over' : ''} ${wipExceeded ? 'wip-exceeded' : ''}`}
+            <div key={col.key} className={`kanban-column ${isOverTarget ? 'drag-over' : ''} ${wipExceeded ? 'wip-exceeded' : ''} ${wipWarn ? 'wip-warn' : ''}`}
               data-column={col.key}>
-              <div className="kanban-column-header" style={{ borderTopColor: col.color }}>
+              <div className="kanban-column-header kanban-column-header-sticky" style={{ borderTopColor: col.color }}>
                 <div className="column-title-row">
                   <i className={col.icon} style={{ color: col.color }}></i>
                   <span className="column-title">{col.title}</span>
                   <span className="column-count" style={{ background: col.color }}>{cards.length}</span>
                 </div>
                 {col.wip_limit != null && (
-                  <div className={`wip-indicator ${wipExceeded ? 'exceeded' : ''}`}>
+                  <div className={`wip-indicator ${wipExceeded ? 'exceeded' : ''} ${wipWarn && !wipExceeded ? 'near-limit' : ''}`}>
                     WIP: {cards.length}/{col.wip_limit}
                     {wipExceeded && <i className="fas fa-exclamation-triangle ms-1"></i>}
+                    {wipWarn && !wipExceeded && <i className="fas fa-hourglass-half ms-1" title="Cerca del límite WIP"></i>}
+                  </div>
+                )}
+                {(overdueN > 0 || altaN > 0 || blockedN > 0) && (
+                  <div className="column-mini-stats" aria-label="Resumen de la columna">
+                    {overdueN > 0 && (
+                      <span className="column-stat column-stat--overdue" title="Con fecha vencida">
+                        <i className="fas fa-exclamation-circle"></i> {overdueN}
+                      </span>
+                    )}
+                    {altaN > 0 && (
+                      <span className="column-stat column-stat--alta" title="Prioridad alta">
+                        <i className="fas fa-arrow-up"></i> {altaN}
+                      </span>
+                    )}
+                    {blockedN > 0 && (
+                      <span className="column-stat column-stat--blocked" title="Bloqueadas">
+                        <i className="fas fa-lock"></i> {blockedN}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -478,7 +525,8 @@ export default function KanbanBoard({
                     {cards.length === 0 && (
                       <div className="kanban-empty">
                         <i className="fas fa-inbox" style={{ color: col.color, opacity: 0.3 }}></i>
-                        <span>Arrastra aquí</span>
+                        <span className="kanban-empty-title">Sin tarjetas</span>
+                        <span className="kanban-empty-hint">{columnEmptyHint(col.key, col.title)}</span>
                       </div>
                     )}
                     {groupBy === 'priority' ? (
