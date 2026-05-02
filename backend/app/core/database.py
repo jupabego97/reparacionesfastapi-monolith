@@ -10,6 +10,11 @@ from sqlalchemy.pool import StaticPool
 from .config import get_settings
 
 
+def _clean_env_text(value: str | None) -> str:
+    """Limpia comillas accidentales al copiar/pegar valores en Railway."""
+    return (value or "").strip().strip('"').strip("'")
+
+
 def _repair_host_segment_optional_port(seg: str) -> str:
     """
     Plantillas tipo `${HOST}:${PGPORT}` con PGPORT vacío suelen producir:
@@ -33,7 +38,7 @@ def _repair_postgresql_netloc(netloc: str) -> str:
 
 def _normalize_database_url(url: str) -> str:
     """Ajustes para proveedores (p. ej. Railway) sin sobrescribir parámetros ya definidos."""
-    url = (url or "").strip()
+    url = _clean_env_text(url)
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
@@ -51,12 +56,17 @@ def _normalize_database_url(url: str) -> str:
     if host.endswith(".proxy.rlwy.net") and "sslmode" not in q:
         q["sslmode"] = "require"
 
+    path = parsed.path
+    if path and path != "/":
+        db_name = _clean_env_text(path.lstrip("/"))
+        path = f"/{db_name}" if db_name else path
+
     merged_query = urlencode(q) if q else ""
-    return urlunparse(parsed._replace(query=merged_query))
+    return urlunparse(parsed._replace(path=path, query=merged_query))
 
 
 def _infer_railway_postgres_database(hostname: str | None, path: str) -> str:
-    current = path.lstrip("/") if path else ""
+    current = _clean_env_text(path.lstrip("/")) if path else ""
     if current:
         return current
     h = (hostname or "").lower()
@@ -67,7 +77,7 @@ def _infer_railway_postgres_database(hostname: str | None, path: str) -> str:
 
 def _ensure_railway_default_database(url: str) -> str:
     """Plantillas que omiten /PGDATABASE dejan database=None para hosts Railway; Postgres usa otro BD por defecto."""
-    p = urlparse(url.strip())
+    p = urlparse(_clean_env_text(url))
     if not p.scheme.startswith("postgresql") or not p.hostname:
         return url
     if (p.path or "").strip("/"):
@@ -80,7 +90,7 @@ def _ensure_railway_default_database(url: str) -> str:
 
 def _rescue_postgresql_url(url: str) -> str:
     """Ensambla una URL válida cuando make_url rechaza cadenas raras típicas de plantillas Railway."""
-    p_in = urlparse(url.strip())
+    p_in = urlparse(_clean_env_text(url))
     if not p_in.scheme.startswith("postgresql"):
         return url
 
@@ -156,7 +166,7 @@ def _rescue_postgresql_url(url: str) -> str:
 
 def _reject_postgresql_missing_host(canonical_url: str) -> None:
     """libpq/psycopg2 sin host en el DSN usan socket Unix local (/var/run/postgresql), inútil en contenedores."""
-    p = urlparse(canonical_url.strip())
+    p = urlparse(_clean_env_text(canonical_url))
     if not p.scheme.startswith("postgresql"):
         return
     if p.hostname:
@@ -176,19 +186,21 @@ def _postgres_url_from_pg_env() -> str | None:
         or os.environ.get("POSTGRES_HOST")
         or os.environ.get("DATABASE_HOST")
         or ""
-    ).strip()
+    )
+    host = _clean_env_text(host)
     if not host:
         return None
 
-    user = (os.environ.get("PGUSER") or os.environ.get("POSTGRES_USER") or "postgres").strip()
-    password = (os.environ.get("PGPASSWORD") or os.environ.get("POSTGRES_PASSWORD") or "").strip()
-    database = (os.environ.get("PGDATABASE") or os.environ.get("POSTGRES_DB") or "railway").strip()
+    user = _clean_env_text(os.environ.get("PGUSER") or os.environ.get("POSTGRES_USER") or "postgres")
+    password = _clean_env_text(os.environ.get("PGPASSWORD") or os.environ.get("POSTGRES_PASSWORD") or "")
+    database = _clean_env_text(os.environ.get("PGDATABASE") or os.environ.get("POSTGRES_DB") or "railway")
     port_raw = (
         os.environ.get("PGPORT")
         or os.environ.get("POSTGRES_PORT")
         or os.environ.get("RAILWAY_TCP_PROXY_PORT")
         or ""
-    ).strip()
+    )
+    port_raw = _clean_env_text(port_raw)
     try:
         port = int(port_raw) if port_raw else None
     except ValueError:
