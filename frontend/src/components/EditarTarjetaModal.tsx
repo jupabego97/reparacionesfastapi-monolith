@@ -259,6 +259,13 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                       <label><i className="fas fa-exclamation-circle"></i> Problema</label>
                       <textarea rows={3} value={form.problema} onChange={e => setForm({ ...form, problema: e.target.value })} />
                     </div>
+                    {tarjeta.fecha_inicio && (
+                      <div className="form-group">
+                        <label><i className="fas fa-clock"></i> Fecha y hora de creación</label>
+                        <input type="text" readOnly className="input-readonly-mono" value={tarjeta.fecha_inicio} aria-readonly="true" />
+                        <span className="field-hint-muted">Valor exacto guardado al crear la tarjeta (inicio de reparación).</span>
+                      </div>
+                    )}
                     <div className="form-row">
                       <div className="form-group">
                         <label><i className="fas fa-calendar"></i> Fecha limite</label>

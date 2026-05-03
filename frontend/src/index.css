@@ -1013,6 +1013,41 @@ body {
   background: rgba(239, 68, 68, 0.08);
 }
 
+.tarjeta-created-at {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  max-width: 100%;
+}
+
+.tarjeta-created-at-label {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 0.62rem;
+}
+
+.tarjeta-created-at-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--input-bg);
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--border);
+}
+
+.tarjeta-fecha-creacion-compact {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+  padding: 0.15rem;
+}
+
 .tarjeta-problem-pro {
   padding: 0.15rem 0.75rem 0.35rem 1.1rem;
   font-size: 0.82rem;
@@ -1713,6 +1748,20 @@ body {
 .field-error {
   font-size: 0.7rem;
   color: var(--danger);
+}
+
+.input-readonly-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+  cursor: default;
+  opacity: 1;
+  color: var(--text-primary);
+}
+
+.field-hint-muted {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.35;
 }
 
 .form-advanced-accordion {

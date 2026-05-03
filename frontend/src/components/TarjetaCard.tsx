@@ -120,6 +120,11 @@ function TarjetaCardComponent({
             </span>
           )}
           <div className="tarjeta-compact-actions">
+            {t.fecha_inicio && (
+              <span className="tarjeta-fecha-creacion-compact" title={`Creada: ${t.fecha_inicio}`}>
+                <i className="fas fa-clock" aria-hidden="true"></i>
+              </span>
+            )}
             {notifyMeta && (
               <span className={notifyMeta.className} title="Aviso WhatsApp al crear tarjeta">
                 {notifyMeta.label}
@@ -272,6 +277,13 @@ function TarjetaCardComponent({
       </header>
 
       <div className="tarjeta-signals" onClick={stop}>
+        {t.fecha_inicio && (
+          <span className="tarjeta-created-at" title="Fecha y hora exacta de creación (registro del sistema)">
+            <i className="fas fa-plus-circle" aria-hidden="true"></i>
+            <span className="tarjeta-created-at-label">Creada</span>
+            <code className="tarjeta-created-at-value">{t.fecha_inicio}</code>
+          </span>
+        )}
         <span className={`tarjeta-due-label ${dueClass}`} title={due.iso ? `Fecha límite: ${due.iso}` : undefined}>
           <i className="fas fa-calendar-alt" aria-hidden="true"></i> {due.text}
         </span>
