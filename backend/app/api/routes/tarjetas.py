@@ -716,9 +716,14 @@ async def create_tarjeta(
     uploaded_media_bootstrap: dict | None = None
     if imagen_url and imagen_url.startswith("data:"):
         storage = get_storage_service()
-        if settings.media_v2_read_write:
-            uploaded_media_bootstrap = storage.upload_image_required(imagen_url)
-            imagen_url = uploaded_media_bootstrap["url"]
+        # upload_image_required exige S3/R2; sin bucket usa upload_image (base64 en BD o subida best-effort)
+        if settings.media_v2_read_write and storage.use_s3:
+            try:
+                uploaded_media_bootstrap = storage.upload_image_required(imagen_url)
+                imagen_url = uploaded_media_bootstrap["url"]
+            except RuntimeError:
+                imagen_url = storage.upload_image(imagen_url)
+                uploaded_media_bootstrap = None
         else:
             imagen_url = storage.upload_image(imagen_url)
 
