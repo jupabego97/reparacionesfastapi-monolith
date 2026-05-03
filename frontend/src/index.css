@@ -76,10 +76,12 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Prevent iOS zoom on input focus (font-size >= 16px) */
+/* Prevent iOS zoom on input focus — debe ser ≥16px físicos (no solo max/rem) */
 @supports (-webkit-touch-callout: none) {
-  input, select, textarea {
-    font-size: max(0.85rem, 16px);
+  input,
+  select,
+  textarea {
+    font-size: 16px;
   }
 }
 
@@ -1730,6 +1732,14 @@ body {
   font-size: max(0.85rem, 16px);
   transition: var(--transition);
   font-family: inherit;
+}
+
+@supports (-webkit-touch-callout: none) {
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 16px;
+  }
 }
 
 .form-group input:focus,
@@ -4269,5 +4279,46 @@ body {
     white-space: nowrap;
     z-index: 10;
     pointer-events: none;
+  }
+}
+
+/* ==================== iOS / PWA: modal estable (zoom al foco + fixed + transform) ==================== */
+@supports (-webkit-touch-callout: none) {
+  @media (max-width: 768px) {
+    .modal-overlay {
+      min-height: 100vh;
+      min-height: 100dvh;
+      min-height: -webkit-fill-available;
+      touch-action: manipulation;
+    }
+
+    .modal-pro {
+      /* translateY en la animación + position fixed en iOS provoca saltos de viewport; solo opacidad */
+      animation: modalProEnterIos 0.22s ease-out;
+    }
+
+    .modal-pro .form-group input,
+    .modal-pro .form-group select,
+    .modal-pro .form-group textarea,
+    .modal-pro input[type='date'],
+    .modal-pro input[type='time'],
+    .modal-pro input[type='datetime-local'] {
+      font-size: 16px !important;
+    }
+
+    .modal-pro-body {
+      touch-action: manipulation;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+}
+
+@keyframes modalProEnterIos {
+  from {
+    opacity: 0.92;
+  }
+
+  to {
+    opacity: 1;
   }
 }
