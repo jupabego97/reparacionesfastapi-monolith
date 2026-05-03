@@ -2,11 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { Tag, UserInfo, TarjetaCreate } from '../api/client';
-import {
-  buildTarjetaCreatedClientMessage,
-  dataUrlToShareableFile,
-  openWhatsAppWithTarjetaMessage,
-} from '../utils/whatsappClientShare';
 
 interface Props {
   onClose: () => void;
@@ -218,35 +213,26 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
         }
       }
 
-      let imageFile: File | null = null;
-      if (photoFiles.length > 0) {
-        imageFile = photoFiles[0];
-      } else if (form.imagen_url?.startsWith('data:')) {
-        imageFile = await dataUrlToShareableFile(form.imagen_url);
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      let whatsappLine = '';
+      if (token) {
+        try {
+          const nr = await api.notifyTarjetaCreated(created.id);
+          if (nr.status === 'sent') whatsappLine = 'WhatsApp enviado al cliente.';
+          else if (nr.status === 'skipped') whatsappLine = nr.message || 'WhatsApp omitido (teléfono o configuración).';
+          else whatsappLine = nr.message || 'WhatsApp no se pudo enviar; puedes avisar manualmente.';
+        } catch {
+          whatsappLine = 'No se pudo completar el aviso por WhatsApp (sesión o servidor).';
+        }
       }
-
-      const msg = buildTarjetaCreatedClientMessage(created, {
-        nombre_propietario: form.nombre_propietario.trim(),
-        problema: form.problema.trim() || 'Sin descripción',
-        fecha_limite: form.fecha_limite,
-      });
-
-      const waResult = await openWhatsAppWithTarjetaMessage({
-        phone: form.whatsapp.trim(),
-        message: msg,
-        imageFile,
-      });
-
-      if (waResult.kind === 'shared') {
-        setSuccessBanner('Elige WhatsApp y el chat del cliente; revisa la foto y el mensaje, luego envía.');
-        await new Promise(r => setTimeout(r, 1400));
+      if (whatsappLine) {
+        setSuccessBanner(whatsappLine);
+        await new Promise(r => requestAnimationFrame(() => r(null)));
+        await new Promise(r => setTimeout(r, 1600));
       }
       setSuccessBanner('');
       onSuccess?.();
       onClose();
-      if (waResult.kind === 'open_url') {
-        window.location.href = waResult.url;
-      }
     } catch {
       setUploadState('idle');
     }
