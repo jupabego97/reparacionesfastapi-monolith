@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     allowed_origins: str = ""
     gemini_api_key: str = ""
     gemini_model: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-3-flash-preview",
         validation_alias=AliasChoices("GEMINI_MODEL", "gemini_model"),
     )
     gemini_temperature: float = Field(
