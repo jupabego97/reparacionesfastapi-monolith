@@ -50,16 +50,27 @@ def get_current_user_optional(
     creds: HTTPAuthorizationCredentials | None = Depends(security),
     db: Session = Depends(get_db),
 ) -> User | None:
-    """Retorna el usuario autenticado o None si no hay token."""
+    """Retorna el usuario autenticado o None si no hay token o el JWT es inválido/expirado."""
     if not creds:
         return None
+    settings = get_settings()
     try:
-        payload = decode_token(creds.credentials)
+        payload = jwt.decode(
+            creds.credentials,
+            settings.jwt_secret,
+            algorithms=[settings.jwt_algorithm],
+        )
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+    try:
         user_id = int(payload["sub"])
         user = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
         return user
     except Exception:
-        return None
+        logger.exception("get_current_user_optional: error inesperado tras JWT válido")
+        raise
 
 
 def get_current_user(

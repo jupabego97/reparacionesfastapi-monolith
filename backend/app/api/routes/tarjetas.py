@@ -826,7 +826,10 @@ async def update_tarjeta(
     if "whatsapp" in upd:
         t.whatsapp_number = upd["whatsapp"]
     if "fecha_limite" in upd:
-        t.due_date = datetime.strptime(upd["fecha_limite"], "%Y-%m-%d")
+        try:
+            t.due_date = datetime.strptime(upd["fecha_limite"], "%Y-%m-%d")
+        except ValueError as err:
+            raise HTTPException(status_code=422, detail="Formato YYYY-MM-DD") from err
     if "imagen_url" in upd:
         new_img = upd["imagen_url"]
         if new_img and new_img.startswith("data:"):
@@ -910,9 +913,6 @@ async def batch_update_positions(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    import logging
-    logger = logging.getLogger(__name__)
-
     try:
         # Batch-load all cards in one query instead of O(N) queries
         item_ids = [item.id for item in data.items]
@@ -970,18 +970,29 @@ async def batch_operations(
     if not cards:
         raise HTTPException(status_code=404, detail="No cards found")
 
+    valid_statuses: list[str] | None = None
+    if data.action == "move" and data.value:
+        nuevo_probe = str(data.value)
+        valid_statuses = _get_valid_statuses(db)
+        if nuevo_probe not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Estado no válido. Permitidos: {valid_statuses}")
+
     updated = []
     for t in cards:
         if data.action == "move" and data.value:
+            nuevo = str(data.value)
+            _check_wip_limit(db, nuevo, exclude_card_id=t.id)
             old_status = t.status
-            t.status = data.value
-            _apply_status_transition(t, data.value)
-            db.add(StatusHistory(
-                tarjeta_id=t.id, old_status=old_status, new_status=data.value,
-                changed_at=datetime.now(UTC),
-                changed_by=user.id,
-                changed_by_name=data.user_name or user.full_name,
-            ))
+            if old_status != nuevo:
+                db.add(StatusHistory(
+                    tarjeta_id=t.id, old_status=old_status, new_status=nuevo,
+                    changed_at=datetime.now(UTC),
+                    changed_by=user.id,
+                    changed_by_name=data.user_name or user.full_name,
+                ))
+                notificar_cambio_estado(db, t, old_status, nuevo)
+            t.status = nuevo
+            _apply_status_transition(t, nuevo)
         elif data.action == "assign" and data.value is not None:
             t.assigned_to = int(data.value) if data.value else None
             t.assigned_name = data.assign_name or ""
@@ -1328,7 +1339,10 @@ async def upload_tarjeta_media(
         if len(file_data) > MAX_MEDIA_SIZE_BYTES:
             raise HTTPException(status_code=400, detail=f"Archivo excede {MAX_MEDIA_SIZE_BYTES // (1024 * 1024)}MB")
         started = time.perf_counter()
-        upload = storage.upload_bytes_required(file_data, mime, ALLOWED_MEDIA_MIME[mime])
+        try:
+            upload = storage.upload_bytes_required(file_data, mime, ALLOWED_MEDIA_MIME[mime])
+        except RuntimeError as err:
+            raise HTTPException(status_code=503, detail="storage_unavailable") from err
         elapsed_ms = round((time.perf_counter() - started) * 1000, 2)
         logger.bind(
             storage="R2",

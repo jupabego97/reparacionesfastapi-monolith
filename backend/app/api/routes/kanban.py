@@ -3,6 +3,7 @@ import json
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -21,7 +22,7 @@ from app.schemas.kanban import (
     TagCreate,
     TagUpdate,
 )
-from app.services.auth_service import get_current_user_optional, require_role
+from app.services.auth_service import get_current_user, get_current_user_optional, require_role
 
 router = APIRouter(prefix="/api", tags=["kanban"])
 
@@ -322,34 +323,65 @@ def delete_comment(comment_id: int, db: Session = Depends(get_db)):
 @router.get("/notificaciones")
 def get_notificaciones(
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
     unread_only: bool = Query(False),
     limit: int = Query(50),
 ):
-    q = db.query(Notification)
+    q = db.query(Notification).filter(
+        or_(Notification.user_id == user.id, Notification.user_id.is_(None)),
+    )
     if unread_only:
         q = q.filter(Notification.read.is_(False))
     items = q.order_by(Notification.created_at.desc()).limit(limit).all()
-    unread_count = db.query(Notification).filter(Notification.read.is_(False)).count()
+    unread_count = (
+        db.query(Notification)
+        .filter(
+            Notification.read.is_(False),
+            or_(Notification.user_id == user.id, Notification.user_id.is_(None)),
+        )
+        .count()
+    )
     return {"notifications": [n.to_dict() for n in items], "unread_count": unread_count}
 
 
 @router.put("/notificaciones/mark-read")
-def mark_read(data: NotificationMarkRead, db: Session = Depends(get_db)):
-    db.query(Notification).filter(Notification.id.in_(data.ids)).update({"read": True}, synchronize_session=False)
+def mark_read(
+    data: NotificationMarkRead,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    db.query(Notification).filter(
+        Notification.id.in_(data.ids),
+        or_(Notification.user_id == user.id, Notification.user_id.is_(None)),
+    ).update({"read": True}, synchronize_session=False)
     db.commit()
     return {"ok": True}
 
 
 @router.put("/notificaciones/mark-all-read")
-def mark_all_read(db: Session = Depends(get_db)):
-    db.query(Notification).filter(Notification.read.is_(False)).update({"read": True}, synchronize_session=False)
+def mark_all_read(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    db.query(Notification).filter(
+        Notification.read.is_(False),
+        or_(Notification.user_id == user.id, Notification.user_id.is_(None)),
+    ).update({"read": True}, synchronize_session=False)
     db.commit()
     return {"ok": True}
 
 
 @router.delete("/notificaciones/{notif_id}", status_code=204)
-def delete_notification(notif_id: int, db: Session = Depends(get_db)):
-    n = db.query(Notification).filter(Notification.id == notif_id).first()
+def delete_notification(
+    notif_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    n = (
+        db.query(Notification)
+        .filter(
+            Notification.id == notif_id,
+            or_(Notification.user_id == user.id, Notification.user_id.is_(None)),
+        )
+        .first()
+    )
     if n:
         db.delete(n)
         db.commit()

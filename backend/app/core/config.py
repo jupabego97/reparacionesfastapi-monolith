@@ -9,6 +9,14 @@ class Settings(BaseSettings):
     environment: str = "development"
     allowed_origins: str = ""
     gemini_api_key: str = ""
+    gemini_model: str = Field(
+        default="gemini-2.5-flash",
+        validation_alias=AliasChoices("GEMINI_MODEL", "gemini_model"),
+    )
+    gemini_temperature: float = Field(
+        default=0.0,
+        validation_alias=AliasChoices("GEMINI_TEMPERATURE", "gemini_temperature"),
+    )
     socketio_safe_mode: bool = False
     redis_url: str | None = None
 

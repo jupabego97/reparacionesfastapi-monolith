@@ -27,6 +27,20 @@ class ProcesarImagenBody(BaseModel):
 @router.post("/procesar-imagen")
 @limiter.limit("5 per minute")
 def procesar_imagen(request: Request, data: ProcesarImagenBody):
+    image_data = data.image
+    if not image_data:
+        raise HTTPException(status_code=400, detail="No se proporcionó imagen")
+    if isinstance(image_data, str) and image_data.startswith("data:image"):
+        _, encoded = image_data.split(",", 1)
+        raw = base64.b64decode(encoded)
+    elif isinstance(image_data, str):
+        raw = base64.b64decode(image_data)
+    else:
+        raise HTTPException(status_code=400, detail="Formato de imagen no soportado")
+    return _procesar_imagen_bytes(raw)
+
+
+def _procesar_imagen_bytes(raw: bytes) -> JSONResponse | dict:
     gemini = get_gemini_service()
     if not gemini:
         logger.warning("Intento de procesamiento sin Gemini disponible")
@@ -38,11 +52,10 @@ def procesar_imagen(request: Request, data: ProcesarImagenBody):
                 "_debug": "Gemini no está configurado o no está disponible",
             },
         )
-    image_data = data.image
-    if not image_data:
+    if not raw:
         raise HTTPException(status_code=400, detail="No se proporcionó imagen")
     try:
-        result = gemini.extract_client_info_from_image(image_data)
+        result = gemini.extract_client_info_from_image(raw)
         if not isinstance(result, dict):
             logger.error(f"Resultado inesperado de Gemini: {type(result)}")
             return JSONResponse(
@@ -67,6 +80,17 @@ def procesar_imagen(request: Request, data: ProcesarImagenBody):
                 "_debug": f"Error en servidor: {str(e)}",
             },
         )
+
+
+@router.post("/procesar-imagen-file")
+@limiter.limit("5 per minute")
+async def procesar_imagen_file(request: Request, file: UploadFile = File(...)):
+    """Variante multipart: mismo resultado que /procesar-imagen sin base64 en JSON."""
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Archivo requerido")
+    raw = await file.read()
+    out = _procesar_imagen_bytes(raw)
+    return out
 
 
 @router.post("/transcribir-audio")

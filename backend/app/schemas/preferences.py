@@ -7,3 +7,4 @@ class UserPreferences(BaseModel):
     density: str = "comfortable"
     theme: str = "dark"
     mobile_behavior: str = "horizontal_swipe"
+    personal_order_enabled: bool = False
