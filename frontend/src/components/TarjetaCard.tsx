@@ -1,6 +1,7 @@
 import { memo, useCallback, type SyntheticEvent } from 'react';
 import type { TarjetaBoardItem, KanbanColumn } from '../api/client';
 import { dueDateLabel } from '../utils/dueDateLabel';
+import { formatDateTimeColombia } from '../utils/colombiaTime';
 import { clientRepairWhatsAppUrl } from '../utils/whatsappUrl';
 
 interface Props {
@@ -121,7 +122,10 @@ function TarjetaCardComponent({
           )}
           <div className="tarjeta-compact-actions">
             {t.fecha_inicio && (
-              <span className="tarjeta-fecha-creacion-compact" title={`Creada: ${t.fecha_inicio}`}>
+              <span
+                className="tarjeta-fecha-creacion-compact"
+                title={`Creada (hora Colombia): ${formatDateTimeColombia(t.fecha_inicio)}`}
+              >
                 <i className="fas fa-clock" aria-hidden="true"></i>
               </span>
             )}
@@ -278,10 +282,10 @@ function TarjetaCardComponent({
 
       <div className="tarjeta-signals" onClick={stop}>
         {t.fecha_inicio && (
-          <span className="tarjeta-created-at" title="Fecha y hora exacta de creación (registro del sistema)">
+          <span className="tarjeta-created-at" title="Fecha y hora de creación (zona Colombia)">
             <i className="fas fa-plus-circle" aria-hidden="true"></i>
             <span className="tarjeta-created-at-label">Creada</span>
-            <code className="tarjeta-created-at-value">{t.fecha_inicio}</code>
+            <code className="tarjeta-created-at-value">{formatDateTimeColombia(t.fecha_inicio)}</code>
           </span>
         )}
         <span className={`tarjeta-due-label ${dueClass}`} title={due.iso ? `Fecha límite: ${due.iso}` : undefined}>

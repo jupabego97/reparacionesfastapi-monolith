@@ -1,22 +1,23 @@
-/** Etiqueta operativa para fecha límite (solo fecha local YYYY-MM-DD). */
+/** Etiqueta operativa para fecha límite (calendario Colombia, misma zona que registros). */
+import { formatYmdColombiaShort, todayColombiaISO } from './colombiaTime';
 
 export type DueSeverity = 'none' | 'ok' | 'soon' | 'today' | 'tomorrow' | 'overdue';
 
-function startOfLocalDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-function parseFechaLimite(raw: string | null | undefined): Date | null {
+function parseFechaLimiteISO(raw: string | null | undefined): string | null {
   if (!raw || !String(raw).trim()) return null;
   const s = String(raw).trim().slice(0, 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]) - 1;
-  const da = Number(m[3]);
-  const dt = new Date(y, mo, da);
-  if (Number.isNaN(dt.getTime())) return null;
-  return dt;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  return s;
+}
+
+/** Días desde `fromYmd` hasta `toYmd` (solo calendario, ordenados como ISO). */
+function calendarDiffDays(fromYmd: string, toYmd: string): number {
+  const a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(fromYmd);
+  const b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(toYmd);
+  if (!a || !b) return 0;
+  const t0 = Date.UTC(Number(a[1]), Number(a[2]) - 1, Number(a[3]));
+  const t1 = Date.UTC(Number(b[1]), Number(b[2]) - 1, Number(b[3]));
+  return Math.round((t1 - t0) / 86400000);
 }
 
 export function dueDateLabel(fechaLimite: string | null | undefined): {
@@ -24,14 +25,12 @@ export function dueDateLabel(fechaLimite: string | null | undefined): {
   severity: DueSeverity;
   iso: string | null;
 } {
-  const dt = parseFechaLimite(fechaLimite);
-  if (!dt) {
+  const iso = parseFechaLimiteISO(fechaLimite);
+  if (!iso) {
     return { text: 'Sin fecha límite', severity: 'none', iso: null };
   }
-  const iso = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
-  const today = startOfLocalDay(new Date());
-  const due = startOfLocalDay(dt);
-  const diffDays = Math.round((due - today) / (24 * 60 * 60 * 1000));
+  const today = todayColombiaISO();
+  const diffDays = calendarDiffDays(today, iso);
 
   if (diffDays < 0) {
     const n = Math.abs(diffDays);
@@ -45,7 +44,7 @@ export function dueDateLabel(fechaLimite: string | null | undefined): {
   if (diffDays === 1) return { text: 'Vence mañana', severity: 'tomorrow', iso };
   if (diffDays <= 3) return { text: `Vence en ${diffDays} días`, severity: 'soon', iso };
   return {
-    text: dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }),
+    text: formatYmdColombiaShort(iso),
     severity: 'ok',
     iso,
   };

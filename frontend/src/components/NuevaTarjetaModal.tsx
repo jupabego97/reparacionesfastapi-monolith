@@ -5,6 +5,7 @@ import type { Tag, UserInfo, TarjetaCreate } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl } from '../utils/imageCapture';
 import { newTarjetaCreatedWhatsAppUrl } from '../utils/whatsappUrl';
+import { tomorrowColombiaISO } from '../utils/colombiaTime';
 
 interface Props {
   onClose: () => void;
@@ -12,9 +13,7 @@ interface Props {
 }
 
 function defaultTomorrowDate(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().split('T')[0];
+  return tomorrowColombiaISO();
 }
 
 export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {

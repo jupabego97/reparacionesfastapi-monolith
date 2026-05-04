@@ -2,6 +2,7 @@ import { useState, useCallback, type KeyboardEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { NotificationItem } from '../api/client';
+import { formatDateTimeColombia } from '../utils/colombiaTime';
 
 function NotifRow({
   n,
@@ -36,7 +37,7 @@ function NotifRow({
       <div className="notif-content">
         <strong>{n.title}</strong>
         <p>{n.message}</p>
-        <small>{n.created_at?.slice(0, 16).replace('T', ' ')}</small>
+        <small>{n.created_at ? formatDateTimeColombia(n.created_at) : ''}</small>
       </div>
     </div>
   );

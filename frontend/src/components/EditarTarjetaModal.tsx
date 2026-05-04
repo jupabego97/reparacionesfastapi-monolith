@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { TarjetaDetail, SubTask, CommentItem, Tag, UserInfo, TarjetaUpdate, TarjetaMediaItem, KanbanColumn } from '../api/client';
 import ConfirmModal from './ConfirmModal';
+import { formatDateTimeColombia } from '../utils/colombiaTime';
 
 interface Props {
   tarjetaId: number;
@@ -280,8 +281,8 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                     {tarjeta.fecha_inicio && (
                       <div className="form-group">
                         <label><i className="fas fa-clock"></i> Fecha y hora de creación</label>
-                        <input type="text" readOnly className="input-readonly-mono" value={tarjeta.fecha_inicio} aria-readonly="true" />
-                        <span className="field-hint-muted">Valor exacto guardado al crear la tarjeta (inicio de reparación).</span>
+                        <input type="text" readOnly className="input-readonly-mono" value={formatDateTimeColombia(tarjeta.fecha_inicio)} aria-readonly="true" />
+                        <span className="field-hint-muted">Hora mostrada en zona Colombia (America/Bogota); el servidor guarda en UTC.</span>
                       </div>
                     )}
                     <div className="form-row">
@@ -435,7 +436,7 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                         <div key={c.id} className="comment-item">
                           <div className="comment-header">
                             <span className="comment-author"><i className="fas fa-user-circle"></i> {c.author_name}</span>
-                            <span className="comment-date">{c.created_at?.slice(0, 16).replace('T', ' ')}</span>
+                            <span className="comment-date">{c.created_at ? formatDateTimeColombia(c.created_at) : ''}</span>
                             <button className="btn-del-sm" onClick={() => delCommentMut.mutate(c.id)}><i className="fas fa-trash"></i></button>
                           </div>
                           <p className="comment-body">{c.content}</p>
@@ -459,7 +460,7 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                               <span className="timeline-to">{colTitleMap[h.new_status] || h.new_status}</span>
                             </div>
                             <div className="timeline-meta">
-                              <span><i className="fas fa-clock"></i> {h.changed_at?.slice(0, 16).replace('T', ' ')}</span>
+                              <span><i className="fas fa-clock"></i> {h.changed_at ? formatDateTimeColombia(h.changed_at) : '—'}</span>
                               {h.changed_by_name && <span><i className="fas fa-user"></i> {h.changed_by_name}</span>}
                             </div>
                           </div>

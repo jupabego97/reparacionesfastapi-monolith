@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { Tarjeta } from '../api/client';
+import { todayColombiaISO } from '../utils/colombiaTime';
 
 interface CalendarViewProps {
     tarjetas: Tarjeta[];
@@ -36,8 +37,7 @@ export default function CalendarView({ tarjetas, onSelect }: CalendarViewProps) 
 
     const prevMonth = () => setCurrentMonth(new Date(year, month - 1, 1));
     const nextMonth = () => setCurrentMonth(new Date(year, month + 1, 1));
-    const today = new Date();
-    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    const todayKey = todayColombiaISO();
 
     const cells: React.ReactNode[] = [];
     // Empty cells for days before first day
@@ -49,7 +49,8 @@ export default function CalendarView({ tarjetas, onSelect }: CalendarViewProps) 
         const dateKey = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayTarjetas = tarjetasByDate[dateKey] || [];
         const isToday = dateKey === todayKey;
-        const hasOverdue = dayTarjetas.some(t => t.columna !== 'listos' && new Date(t.fecha_limite!) < today);
+        const hasOverdue =
+            dateKey < todayKey && dayTarjetas.some(t => t.columna !== 'listos');
 
         cells.push(
             <div key={day} className={`cal-cell ${isToday ? 'cal-today' : ''} ${dayTarjetas.length > 0 ? 'cal-has-items' : ''}`}>

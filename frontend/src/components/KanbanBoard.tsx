@@ -11,6 +11,7 @@ import SortableTarjetaCard from './SortableTarjetaCard';
 import TarjetaCard from './TarjetaCard';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { applyLocalColumnOrder, useLocalCardOrderPersistence } from '../hooks/useLocalCardOrder';
+import { todayColombiaISO } from '../utils/colombiaTime';
 
 interface Props {
   columnas: KanbanColumn[];
@@ -40,13 +41,8 @@ const kanbanCollision: CollisionDetection = (args) => {
 function isDueOverdue(fechaLimite: string | null | undefined): boolean {
   if (!fechaLimite || !String(fechaLimite).trim()) return false;
   const s = String(fechaLimite).trim().slice(0, 10);
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
-  if (!m) return false;
-  const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  dt.setHours(0, 0, 0, 0);
-  return dt < today;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  return s < todayColombiaISO();
 }
 
 function columnEmptyHint(colKey: string, colTitle: string): string {

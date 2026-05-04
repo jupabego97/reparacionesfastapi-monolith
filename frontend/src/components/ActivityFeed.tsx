@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api, type ActivityItem } from '../api/client';
+import { formatDateTimeColombia } from '../utils/colombiaTime';
 import { ErrorState, EmptyState } from './UiState';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -65,7 +66,7 @@ export default function ActivityFeed({ onClose }: { onClose: () => void }) {
                                             )}
                                             {' '}a <span className="activity-status highlight">{STATUS_LABELS[item.new_status] || item.new_status}</span>
                                         </div>
-                                        <div className="activity-time">{item.changed_at}</div>
+                                        <div className="activity-time">{formatDateTimeColombia(item.changed_at)}</div>
                                     </div>
                                 </div>
                             ))}
