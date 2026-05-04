@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import type { Tag, UserInfo, TarjetaCreate } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl } from '../utils/imageCapture';
+import { newTarjetaCreatedWhatsAppUrl } from '../utils/whatsappUrl';
 
 interface Props {
   onClose: () => void;
@@ -249,29 +250,26 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
       onSuccess?.();
 
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-      if (!token) {
-        setError(
-          'Tarjeta creada. No hay sesión para enviar el aviso por WhatsApp; inicie sesión o avise al cliente manualmente.',
-        );
-        return;
-      }
-      try {
-        const nr = await api.notifyTarjetaCreated(created.id);
-        if (nr.status === 'sent') {
-          setSuccessBanner('WhatsApp enviado al cliente.');
-          await new Promise(r => requestAnimationFrame(() => r(null)));
-          await new Promise(r => setTimeout(r, 1600));
-          setSuccessBanner('');
-        } else {
+      const waUrl = newTarjetaCreatedWhatsAppUrl(
+        created.whatsapp ?? form.whatsapp.trim(),
+        created.nombre_propietario ?? form.nombre_propietario.trim(),
+        created.id,
+        created.problema ?? (form.problema.trim() || 'Sin descripción'),
+      );
+      if (waUrl) {
+        const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
+        if (!opened || opened.closed) {
           setError(
-            `Tarjeta creada. WhatsApp no se envió (${nr.status}). ${nr.message || 'Revise el número, WHATSAPP_ENABLED y WHATSAPP_TEMPLATE_NAME en el servidor.'}`,
+            'Tarjeta creada. No se pudo abrir WhatsApp (ventana emergente bloqueada). Permita popups o abra el chat desde la tarjeta.',
           );
           return;
         }
-      } catch (e) {
+        setSuccessBanner('Se abrió WhatsApp con el mensaje para el cliente.');
+        await new Promise(r => setTimeout(r, 900));
+        setSuccessBanner('');
+      } else if (form.whatsapp.trim()) {
         setError(
-          `Tarjeta creada. Error al solicitar WhatsApp: ${e instanceof Error ? e.message : 'Error de red o servidor'}`,
+          'Tarjeta creada. El número de WhatsApp no es válido para abrir el chat (incluya código de país o 10 dígitos móvil CO).',
         );
         return;
       }

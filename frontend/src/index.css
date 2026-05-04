@@ -1594,7 +1594,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  /* Por encima de .mobile-board-nav (1380) para que los pies de modal no queden tapados */
+  z-index: 2000;
   padding: 1rem;
   backdrop-filter: blur(4px);
   animation: fadeIn 0.2s;
@@ -2580,6 +2581,8 @@ body {
 .capture-preview-image img {
   width: 100%;
   display: block;
+  max-height: min(52vh, 480px);
+  object-fit: contain;
 }
 
 .capture-preview-actions {
@@ -3300,6 +3303,7 @@ body {
   .capture-preview-actions {
     flex-shrink: 0;
     padding: 0.75rem 0;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
     gap: 0.75rem;
   }
 
