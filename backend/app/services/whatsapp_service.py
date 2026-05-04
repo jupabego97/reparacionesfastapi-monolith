@@ -68,11 +68,14 @@ def default_template_body_parameters(tarjeta: Any) -> list[str]:
 
 
 def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[str] | None:
-    """None = no incluir componente body. [] = plantilla sin variables de body."""
+    """Parámetros del body de la plantilla Meta.
+
+    - Vacío o ``auto``: rellena con datos de la tarjeta (nombre, folio, problema, fecha vacía).
+    - ``[]`` (JSON): plantilla sin variables en el body (no se envía componente body).
+    - Otro JSON array: valores fijos en orden.
+    """
     raw = (getattr(settings, "whatsapp_template_body_params_json", "") or "").strip()
-    if not raw:
-        return None
-    if raw.lower() == "auto":
+    if not raw or raw.lower() == "auto":
         if tarjeta is None:
             return []
         return default_template_body_parameters(tarjeta)
@@ -97,6 +100,7 @@ def _build_payload(
         lang = (getattr(settings, "whatsapp_template_language", None) or "es").strip() or "es"
         tpl: dict[str, Any] = {"name": tpl_name, "language": {"code": lang}}
         params = _template_body_parameters(settings, tarjeta)
+        # params == [] → plantilla sin variables de body; no añadir components
         if params is not None and len(params) > 0:
             tpl["components"] = [
                 {"type": "body", "parameters": [{"type": "text", "text": p} for p in params]},
@@ -132,6 +136,13 @@ async def send_whatsapp_message(
     phone_id = settings.whatsapp_phone_number_id.strip()
     ver = (settings.whatsapp_graph_version or "v21.0").strip().strip("/")
     url = f"https://graph.facebook.com/{ver}/{phone_id}/messages"
+    tpl_name = (getattr(settings, "whatsapp_template_name", "") or "").strip()
+    if not tpl_name:
+        logger.warning(
+            "WhatsApp: WHATSAPP_TEMPLATE_NAME vacío; se envía mensaje de texto libre. "
+            "Meta suele exigir plantilla aprobada para el primer contacto al cliente."
+        )
+
     payload = _build_payload(settings, to_digits, body_text, tarjeta)
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}

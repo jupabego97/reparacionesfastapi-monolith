@@ -204,8 +204,11 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const validate = (): boolean => {
     const errs: Record<string, string> = {};
     if (!form.nombre_propietario.trim()) errs.nombre = 'El nombre es requerido';
-    if (form.whatsapp && !/^\+?\d{7,15}$/.test(form.whatsapp.replace(/[\s-]/g, ''))) {
-      errs.whatsapp = 'Formato: +57 300 123 4567';
+    if (form.whatsapp.trim()) {
+      const digits = form.whatsapp.replace(/\D/g, '');
+      if (digits.length < 10 || digits.length > 15) {
+        errs.whatsapp = 'Ingrese un número válido (10–15 dígitos, ej. 300 123 4567 o +57 300 123 4567)';
+      }
     }
     if (!form.fecha_limite) errs.fecha = 'La fecha límite es requerida';
     setValidationErrors(errs);
@@ -244,25 +247,35 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
         }
       }
 
-      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
-      let whatsappLine = '';
-      if (token) {
-        try {
-          const nr = await api.notifyTarjetaCreated(created.id);
-          if (nr.status === 'sent') whatsappLine = 'WhatsApp enviado al cliente.';
-          else if (nr.status === 'skipped') whatsappLine = nr.message || 'WhatsApp omitido (teléfono o configuración).';
-          else whatsappLine = nr.message || 'WhatsApp no se pudo enviar; puedes avisar manualmente.';
-        } catch {
-          whatsappLine = 'No se pudo completar el aviso por WhatsApp (sesión o servidor).';
-        }
-      }
-      if (whatsappLine) {
-        setSuccessBanner(whatsappLine);
-        await new Promise(r => requestAnimationFrame(() => r(null)));
-        await new Promise(r => setTimeout(r, 1600));
-      }
-      setSuccessBanner('');
       onSuccess?.();
+
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
+        setError(
+          'Tarjeta creada. No hay sesión para enviar el aviso por WhatsApp; inicie sesión o avise al cliente manualmente.',
+        );
+        return;
+      }
+      try {
+        const nr = await api.notifyTarjetaCreated(created.id);
+        if (nr.status === 'sent') {
+          setSuccessBanner('WhatsApp enviado al cliente.');
+          await new Promise(r => requestAnimationFrame(() => r(null)));
+          await new Promise(r => setTimeout(r, 1600));
+          setSuccessBanner('');
+        } else {
+          setError(
+            `Tarjeta creada. WhatsApp no se envió (${nr.status}). ${nr.message || 'Revise el número, WHATSAPP_ENABLED y WHATSAPP_TEMPLATE_NAME en el servidor.'}`,
+          );
+          return;
+        }
+      } catch (e) {
+        setError(
+          `Tarjeta creada. Error al solicitar WhatsApp: ${e instanceof Error ? e.message : 'Error de red o servidor'}`,
+        );
+        return;
+      }
+
       onClose();
     } catch {
       setUploadState('idle');

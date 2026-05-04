@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from app.core.config import get_settings
+from app.services import whatsapp_service as ws_mod
 from app.services.whatsapp_service import normalize_whatsapp_digits
 from tests.conftest import client
 
@@ -30,6 +31,26 @@ def test_normalize_whatsapp_colombia_mobile():
 def test_normalize_whatsapp_invalid():
     assert normalize_whatsapp_digits("") is None
     assert normalize_whatsapp_digits("12") is None
+
+
+def test_template_body_params_empty_behaves_as_auto():
+    """Si WHATSAPP_TEMPLATE_BODY_PARAMS_JSON está vacío, se rellenan variables con datos de la tarjeta."""
+
+    class FakeTarjeta:
+        owner_name = "Ana"
+        problem = "Pantalla rota"
+        id = 42
+        due_date = None
+
+    settings = type("S", (), {"whatsapp_template_body_params_json": ""})()
+    out = ws_mod._template_body_parameters(settings, FakeTarjeta())
+    assert out == ["Ana", "42", "Pantalla rota", ""]
+
+
+def test_template_body_params_json_empty_list():
+    settings = type("S", (), {"whatsapp_template_body_params_json": "[]"})()
+    out = ws_mod._template_body_parameters(settings, object())
+    assert out == []
 
 
 def test_notify_created_requires_auth():
