@@ -48,7 +48,6 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [successBanner, setSuccessBanner] = useState('');
 
   const { data: allTags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.getUsers });
@@ -257,16 +256,9 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
         created.problema ?? (form.problema.trim() || 'Sin descripción'),
       );
       if (waUrl) {
-        const opened = window.open(waUrl, '_blank', 'noopener,noreferrer');
-        if (!opened || opened.closed) {
-          setError(
-            'Tarjeta creada. No se pudo abrir WhatsApp (ventana emergente bloqueada). Permita popups o abra el chat desde la tarjeta.',
-          );
-          return;
-        }
-        setSuccessBanner('Se abrió WhatsApp con el mensaje para el cliente.');
-        await new Promise(r => setTimeout(r, 900));
-        setSuccessBanner('');
+        // Navegación normal (sin popup) para evitar permisos del navegador.
+        window.location.href = waUrl;
+        return;
       } else if (form.whatsapp.trim()) {
         setError(
           'Tarjeta creada. El número de WhatsApp no es válido para abrir el chat (incluya código de país o 10 dígitos móvil CO).',
@@ -290,12 +282,6 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
         <div className="modal-pro-body">
           {error && <div className="login-error"><i className="fas fa-exclamation-triangle"></i> {error}</div>}
-          {successBanner && (
-            <div className="login-error" style={{ background: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.5)', color: '#166534' }}>
-              <i className="fas fa-check-circle"></i> {successBanner}
-            </div>
-          )}
-
           {step === 'capture' && (
             <div className={`capture-step ${isMobile && cameraActive ? 'camera-fullscreen' : ''}`}>
               {!cameraActive && (
