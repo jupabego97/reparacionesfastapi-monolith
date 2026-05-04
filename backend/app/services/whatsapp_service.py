@@ -45,35 +45,26 @@ def is_whatsapp_send_configured(settings: Settings) -> bool:
 
 
 def build_tarjeta_created_body(tarjeta: Any) -> str:
-    """Texto plano para mensaje de confirmación al cliente."""
+    """Texto plano para mensaje de confirmación al cliente (sin fecha de vencimiento)."""
     nombre = (getattr(tarjeta, "owner_name", None) or "Cliente").strip()
     prob = (getattr(tarjeta, "problem", None) or "Sin descripción").strip()
     if len(prob) > 500:
         prob = prob[:497] + "..."
-    dl = ""
-    dd = getattr(tarjeta, "due_date", None)
-    if dd is not None:
-        dl = dd.strftime("%Y-%m-%d")
     tid = getattr(tarjeta, "id", "") or "?"
     return (
         f"Hola {nombre}, registramos tu equipo para reparación.\n"
         f"Folio: #{tid}\n"
         f"Motivo: {prob}\n"
-        f"Fecha límite estimada: {dl}\n"
         "Te avisaremos por este canal cuando haya novedades."
     )
 
 
 def default_template_body_parameters(tarjeta: Any) -> list[str]:
-    """Valores por defecto para variables de plantilla (body)."""
+    """Valores por defecto para variables de plantilla (body). La 4ª posición queda vacía (sin fecha de vencimiento)."""
     nombre = (getattr(tarjeta, "owner_name", None) or "Cliente").strip()
     prob = (getattr(tarjeta, "problem", None) or "")[:120]
-    dl = ""
-    dd = getattr(tarjeta, "due_date", None)
-    if dd is not None:
-        dl = dd.strftime("%Y-%m-%d")
     tid = str(getattr(tarjeta, "id", "") or "")
-    return [nombre, tid, prob, dl]
+    return [nombre, tid, prob, ""]
 
 
 def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[str] | None:
