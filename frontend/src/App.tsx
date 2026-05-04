@@ -2,7 +2,7 @@ import { useState, useEffect, lazy, Suspense, useCallback, useRef, useMemo } fro
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
 import { io } from 'socket.io-client';
-import { api } from './api/client';
+import { api, setUnauthorizedHandler, API_BASE } from './api/client';
 import type { TarjetaBoardItem, KanbanColumn, Tag, UserInfo, TarjetasBoardResponse, TarjetaUpdate, UserPreferences, SavedView } from './api/client';
 import { useAuth } from './contexts/AuthContext';
 import LoginScreen from './components/LoginScreen';
@@ -16,7 +16,7 @@ import CalendarView from './components/CalendarView';
 import BulkActionsBar from './components/BulkActionsBar';
 import { EmptyState, ErrorState } from './components/UiState';
 import { useDebounce } from './hooks/useDebounce';
-import { API_BASE } from './api/client';
+import { useIsMobile } from './hooks/useIsMobile';
 
 const NuevaTarjetaModal = lazy(() => import('./components/NuevaTarjetaModal'));
 const EditarTarjetaModal = lazy(() => import('./components/EditarTarjetaModal'));
@@ -26,10 +26,20 @@ const ExportarModal = lazy(() => import('./components/ExportarModal'));
 type ThemeMode = 'light' | 'dark';
 type ViewMode = 'kanban' | 'calendar';
 type ToastType = 'success' | 'warning' | 'info' | 'error';
-type BoardInfiniteData = InfiniteData<TarjetasBoardResponse, number>;
+type BoardInfiniteData = InfiniteData<TarjetasBoardResponse, string | undefined>;
 
 type ReorderItem = { id: number; columna: string; posicion: number };
 type SocketEnvelope<T> = { event_version?: number; data?: T } | T;
+
+function ModalSuspenseFallback() {
+  return (
+    <div className="modal-overlay" style={{ pointerEvents: 'none', background: 'rgba(0,0,0,0.35)' }} aria-hidden="true">
+      <div className="app-loading" style={{ minHeight: 'auto', padding: '2rem' }}>
+        <div className="spinner-large" />
+      </div>
+    </div>
+  );
+}
 
 function unwrapSocketData<T>(payload: SocketEnvelope<T>): T {
   if (payload && typeof payload === 'object' && 'data' in payload) {
@@ -53,6 +63,7 @@ const DEFAULT_PREFERENCES: UserPreferences = {
   density: 'comfortable',
   theme: 'dark',
   mobile_behavior: 'horizontal_swipe',
+  personal_order_enabled: false,
 };
 
 function applyCardPatch(data: BoardInfiniteData | undefined, card: TarjetaBoardItem): BoardInfiniteData | undefined {
@@ -116,17 +127,6 @@ async function fetchBoardCards(params: {
   });
 }
 
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = () => setIsMobile(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
-
 export default function App() {
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const qc = useQueryClient();
@@ -165,11 +165,38 @@ export default function App() {
 
   const [undoAction, setUndoAction] = useState<{ cardId: number; oldCol: string; msg: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: ToastType } | null>(null);
+
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [boardMenuOpen, setBoardMenuOpen] = useState(false);
   const boardMenuRef = useRef<HTMLDivElement | null>(null);
   const [activeSavedViewId, setActiveSavedViewId] = useState<string>('');
   const hasAppliedDefaultViewRef = useRef(false);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      logout();
+      setToast({ msg: 'Sesión expirada o no válida. Inicie sesión de nuevo.', type: 'info' });
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
+
+  useEffect(() => {
+    if (!API_BASE || typeof document === 'undefined') return;
+    try {
+      const origin = new URL(API_BASE.startsWith('http') ? API_BASE : `https://${API_BASE}`).origin;
+      if (origin === window.location.origin) return;
+      const link = document.createElement('link');
+      link.rel = 'preconnect';
+      link.href = origin;
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+      return () => {
+        document.head.removeChild(link);
+      };
+    } catch {
+      return undefined;
+    }
+  }, []);
 
   useEffect(() => {
     if (!boardMenuOpen) return;
@@ -523,7 +550,7 @@ export default function App() {
           <ConexionBadge status={connStatus} />
         </div>
 
-        <Suspense fallback={null}>
+        <Suspense fallback={<ModalSuspenseFallback />}>
           {showNew && (
             <NuevaTarjetaModal
               onClose={() => setShowNew(false)}
@@ -551,7 +578,7 @@ export default function App() {
           <ConexionBadge status={connStatus} />
         </div>
         <div className="header-actions">
-          <button className="header-btn active" onClick={() => setShowNew(true)} title="Nueva reparacion (N)" aria-label="Crear nueva tarjeta">
+          <button className="header-btn active" onClick={() => setShowNew(true)} title="Nueva reparación (N)" aria-label="Crear nueva tarjeta">
             <i className="fas fa-plus"></i> <span className="btn-text">Nueva</span>
           </button>
 
@@ -567,14 +594,14 @@ export default function App() {
               aria-haspopup="menu"
               aria-expanded={showMoreMenu}
               aria-controls="header-more-menu"
-              title="Mas acciones"
+              title="Más acciones"
             >
-              <i className="fas fa-ellipsis-h"></i> <span className="btn-text">Mas</span>
+              <i className="fas fa-ellipsis-h"></i> <span className="btn-text">Más</span>
             </button>
             {showMoreMenu && (
               <div id="header-more-menu" className="header-more-menu" role="menu">
                 <button className="header-more-item" role="menuitem" onClick={() => { setShowStats(true); setShowMoreMenu(false); }}>
-                  <i className="fas fa-chart-bar"></i> Estadisticas
+                  <i className="fas fa-chart-bar"></i> Estadísticas
                 </button>
                 <button className="header-more-item" role="menuitem" onClick={() => { setShowExport(true); setShowMoreMenu(false); }}>
                   <i className="fas fa-file-export"></i> Exportar
@@ -618,6 +645,21 @@ export default function App() {
             aria-label="Alternar vista compacta"
           >
             <i className={compactView ? 'fas fa-th-list' : 'fas fa-th-large'}></i> <span className="btn-text">Compacta</span>
+          </button>
+          <button
+            type="button"
+            className={`toolbar-btn ${preferences.personal_order_enabled ? 'active' : ''}`}
+            onClick={() =>
+              prefsMutation.mutate({
+                ...DEFAULT_PREFERENCES,
+                ...preferences,
+                personal_order_enabled: !preferences.personal_order_enabled,
+              })
+            }
+            title="Orden local solo en su dispositivo; no cambia el tablero para el equipo"
+            aria-label="Alternar mi orden personal de tarjetas"
+          >
+            <i className="fas fa-sort"></i> <span className="btn-text">Mi orden</span>
           </button>
           <div className="toolbar-menu-wrap" ref={boardMenuRef}>
             <button
@@ -684,7 +726,7 @@ export default function App() {
         <div className="toolbar-right">
           <button className={`toolbar-btn ${selectMode ? 'active' : ''}`}
             onClick={() => { setSelectMode(!selectMode); if (selectMode) setSelectedIds([]); }}>
-            <i className="fas fa-check-double"></i> {selectMode ? 'Cancelar seleccion' : 'Seleccionar'}
+            <i className="fas fa-check-double"></i> {selectMode ? 'Cancelar selección' : 'Seleccionar'}
           </button>
         </div>
       </div>
@@ -721,6 +763,8 @@ export default function App() {
           ) : (
             <KanbanBoard columnas={columnas} tarjetas={tarjetas}
               onEdit={t => setEditCardId(t.id)} groupBy={groupBy} compactView={compactView}
+              personalOrderEnabled={!!preferences.personal_order_enabled}
+              userId={user?.id ?? null}
               selectable={selectMode} selectedIds={selectedIds} onSelect={toggleSelect}
               onBlock={handleBlock} onUnblock={handleUnblock}
               onMoveError={(err) => {
@@ -749,10 +793,11 @@ export default function App() {
           selectedIds={selectedIds}
           columns={columnas}
           onClear={() => setSelectedIds([])}
+          onError={msg => setToast({ msg, type: 'error' })}
           onDone={() => {
             setSelectedIds([]);
             setSelectMode(false);
-            setToast({ msg: 'Operacion en lote completada', type: 'success' });
+            setToast({ msg: 'Operación en lote completada', type: 'success' });
           }}
         />
       )}
@@ -787,7 +832,7 @@ export default function App() {
         </nav>
       )}
 
-      <Suspense fallback={null}>
+      <Suspense fallback={<ModalSuspenseFallback />}>
         {showNew && (
           <NuevaTarjetaModal
             onClose={() => setShowNew(false)}

@@ -1,7 +1,46 @@
-import { useState } from 'react';
+import { useState, useCallback, type KeyboardEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { NotificationItem } from '../api/client';
+
+function NotifRow({
+  n,
+  typeIcons,
+  typeColors,
+  onActivate,
+}: {
+  n: NotificationItem;
+  typeIcons: Record<string, string>;
+  typeColors: Record<string, string>;
+  onActivate: () => void;
+}) {
+  const onKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        onActivate();
+      }
+    },
+    [onActivate],
+  );
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`notification-item ${n.read ? 'read' : 'unread'}`}
+      onClick={onActivate}
+      onKeyDown={onKeyDown}
+      aria-label={n.read ? n.title : `${n.title}. No leída. Pulse para marcar como leída.`}
+    >
+      <i className={typeIcons[n.type] || 'fas fa-info-circle'} style={{ color: typeColors[n.type] }} aria-hidden="true"></i>
+      <div className="notif-content">
+        <strong>{n.title}</strong>
+        <p>{n.message}</p>
+        <small>{n.created_at?.slice(0, 16).replace('T', ' ')}</small>
+      </div>
+    </div>
+  );
+}
 
 export default function NotificationCenter() {
     const qc = useQueryClient();
@@ -70,15 +109,13 @@ export default function NotificationCenter() {
                                 <p className="empty-notif"><i className="fas fa-bell-slash"></i> Sin notificaciones</p>
                             ) : (
                                 notifications.map((n: NotificationItem) => (
-                                    <div key={n.id} className={`notification-item ${n.read ? 'read' : 'unread'}`}
-                                        onClick={() => !n.read && markReadMut.mutate([n.id])}>
-                                        <i className={typeIcons[n.type] || 'fas fa-info-circle'} style={{ color: typeColors[n.type] }}></i>
-                                        <div className="notif-content">
-                                            <strong>{n.title}</strong>
-                                            <p>{n.message}</p>
-                                            <small>{n.created_at?.slice(0, 16).replace('T', ' ')}</small>
-                                        </div>
-                                    </div>
+                                    <NotifRow
+                                      key={n.id}
+                                      n={n}
+                                      typeIcons={typeIcons}
+                                      typeColors={typeColors}
+                                      onActivate={() => !n.read && markReadMut.mutate([n.id])}
+                                    />
                                 ))
                             )}
                         </div>

@@ -1,26 +1,15 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client';
+import type { EstadisticasData } from '../api/client';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend } from 'chart.js';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend);
 
 interface Props { onClose: () => void; }
-interface EstadisticasData {
-  totales_por_estado?: Record<string, number>;
-  tiempos_promedio_dias?: Record<string, number>;
-  distribucion_prioridad?: Record<string, number>;
-  resumen_financiero?: { total_estimado?: number; total_cobrado?: number };
-  tasa_cargador?: { con_cargador?: number; sin_cargador?: number };
-  top_problemas?: Array<{ problema: string; cantidad: number }>;
-  total_reparaciones?: number;
-  completadas_ultimo_mes?: number;
-  pendientes?: number;
-  con_notas_tecnicas?: number;
-}
 
 export default function EstadisticasModal({ onClose }: Props) {
-  const { data: stats, isLoading } = useQuery<EstadisticasData>({ queryKey: ['estadisticas'], queryFn: api.getEstadisticas as () => Promise<EstadisticasData> });
+  const { data: stats, isLoading } = useQuery<EstadisticasData>({ queryKey: ['estadisticas'], queryFn: () => api.getEstadisticas() });
 
   if (isLoading || !stats) {
     return (

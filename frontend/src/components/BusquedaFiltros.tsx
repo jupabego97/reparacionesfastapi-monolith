@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useIsMobile } from '../hooks/useIsMobile';
 import type { UserInfo, Tag } from '../api/client';
 
 interface Filtros {
@@ -19,19 +20,8 @@ interface Props {
   columnas: { key: string; title: string }[];
 }
 
-function useIsMobileFilters(): boolean {
-  const [m, setM] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const fn = () => setM(mq.matches);
-    mq.addEventListener('change', fn);
-    return () => mq.removeEventListener('change', fn);
-  }, []);
-  return m;
-}
-
 export default function BusquedaFiltros({ filtros, onChange, totalResults, users, tags, columnas }: Props) {
-  const isMobile = useIsMobileFilters();
+  const isMobile = useIsMobile();
   const [sheetOpen, setSheetOpen] = useState(false);
   const set = (key: keyof Filtros, val: string) => onChange({ ...filtros, [key]: val });
   const hasFilters = filtros.search || filtros.estado || filtros.prioridad || filtros.asignado_a || filtros.cargador || filtros.tag;

@@ -294,42 +294,15 @@ function TarjetaCardComponent({
         )}
       </div>
 
-      {(prevCol || nextCol) && (
-        <div className="tarjeta-mobile-arrows" onClick={stop}>
-          {prevCol && (
-            <button
-              type="button"
-              className="btn-col-arrow"
-              onClick={() => onMove(t.id, prevCol.key)}
-              title={`Mover a ${prevCol.title}`}
-              aria-label={`Mover a columna ${prevCol.title}`}
-              style={{ borderColor: prevCol.color, color: prevCol.color }}
-            >
-              <i className="fas fa-arrow-left" aria-hidden="true"></i>
-              <span>{prevCol.title}</span>
-            </button>
-          )}
-          {nextCol && (
-            <button
-              type="button"
-              className="btn-col-arrow"
-              onClick={() => onMove(t.id, nextCol.key)}
-              title={`Mover a ${nextCol.title}`}
-              aria-label={`Mover a columna ${nextCol.title}`}
-              style={{ borderColor: nextCol.color, color: nextCol.color }}
-            >
-              <span>{nextCol.title}</span>
-              <i className="fas fa-arrow-right" aria-hidden="true"></i>
-            </button>
-          )}
-        </div>
-      )}
-
-      {(t.problema_resumen || t.problema) && (t.problema || t.problema_resumen) !== 'Sin descripcion' && (
-        <p className="tarjeta-problem-pro" aria-label="Problema reportado">
-          {t.problema_resumen || (t.problema!.length > 100 ? `${t.problema!.slice(0, 100)}…` : t.problema)}
-        </p>
-      )}
+      {(() => {
+        const raw = (t.problema_resumen || t.problema || '').trim();
+        if (!raw || /^Sin descripci[oó]n$/i.test(raw)) return null;
+        return (
+          <p className="tarjeta-problem-pro" aria-label="Problema reportado">
+            {t.problema_resumen || (t.problema!.length > 100 ? `${t.problema!.slice(0, 100)}…` : t.problema)}
+          </p>
+        );
+      })()}
 
       {notaTecnica && (
         <div className="tarjeta-notas-tecnicas" aria-label="Notas técnicas" onClick={stop}>

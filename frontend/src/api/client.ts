@@ -154,6 +154,22 @@ export interface UserPreferences {
   density: 'comfortable' | 'compact';
   theme: 'light' | 'dark';
   mobile_behavior: 'horizontal_swipe' | 'stacked';
+  /** Orden local de tarjetas por columna (solo este usuario); no afecta al backend. */
+  personal_order_enabled?: boolean;
+}
+
+/** Respuesta de GET /api/estadisticas (campos usados en EstadisticasModal). */
+export interface EstadisticasData {
+  totales_por_estado?: Record<string, number>;
+  tiempos_promedio_dias?: Record<string, number>;
+  distribucion_prioridad?: Record<string, number>;
+  resumen_financiero?: { total_estimado?: number; total_cobrado?: number };
+  tasa_cargador?: { con_cargador?: number; sin_cargador?: number };
+  top_problemas?: Array<{ problema: string; cantidad: number }>;
+  total_reparaciones?: number;
+  completadas_ultimo_mes?: number;
+  pendientes?: number;
+  con_notas_tecnicas?: number;
 }
 
 export interface SavedView {
@@ -292,8 +308,26 @@ export async function parseApiError(res: Response, rawText?: string): Promise<Ap
   }
 }
 
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Registra callback ante 401 con sesión (p. ej. logout + toast). Una sola vez por app. */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
 async function ensureOk(res: Response): Promise<void> {
   if (res.ok) return;
+  if (
+    res.status === 401 &&
+    typeof localStorage !== 'undefined' &&
+    localStorage.getItem('token')
+  ) {
+    try {
+      unauthorizedHandler?.();
+    } catch {
+      /* no bloquear parseo de error */
+    }
+  }
   throw await parseApiError(res);
 }
 
@@ -479,7 +513,7 @@ export const api = {
   },
 
   // --- Estadísticas ---
-  async getEstadisticas(): Promise<object> {
+  async getEstadisticas(): Promise<EstadisticasData> {
     const res = await fetch(`${API_BASE}/api/estadisticas`, { headers: authHeaders() });
     await ensureOk(res);
     return res.json();
@@ -606,6 +640,29 @@ export const api = {
   async procesarImagen(imageData: string): Promise<{ nombre: string; telefono: string; tiene_cargador: boolean; _partial?: boolean }> {
     const res = await fetch(`${API_BASE}/api/procesar-imagen`, {
       method: 'POST', headers: jsonHeaders(), body: JSON.stringify({ image: imageData }),
+    });
+    const raw = await res.text();
+    let data: { nombre?: string; telefono?: string; tiene_cargador?: boolean };
+    try {
+      data = raw ? (JSON.parse(raw) as { nombre?: string; telefono?: string; tiene_cargador?: boolean }) : {};
+    } catch {
+      data = {};
+    }
+    if (!res.ok) {
+      if (data && typeof data.nombre === 'string') {
+        return { nombre: data.nombre, telefono: data.telefono ?? '', tiene_cargador: !!data.tiene_cargador, _partial: true };
+      }
+      throw await parseApiError(res, raw);
+    }
+    return { nombre: data.nombre ?? 'Cliente', telefono: data.telefono ?? '', tiene_cargador: !!data.tiene_cargador };
+  },
+  async procesarImagenFile(blob: Blob): Promise<{ nombre: string; telefono: string; tiene_cargador: boolean; _partial?: boolean }> {
+    const form = new FormData();
+    form.append('file', blob, 'capture.jpg');
+    const res = await fetch(`${API_BASE}/api/procesar-imagen-file`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: form,
     });
     const raw = await res.text();
     let data: { nombre?: string; telefono?: string; tiene_cargador?: boolean };

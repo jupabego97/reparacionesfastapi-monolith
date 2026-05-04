@@ -1,7 +1,9 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { Tag, UserInfo, TarjetaCreate } from '../api/client';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl } from '../utils/imageCapture';
 
 interface Props {
   onClose: () => void;
@@ -14,25 +16,16 @@ function defaultTomorrowDate(): string {
   return d.toISOString().split('T')[0];
 }
 
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = () => setIsMobile(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
-
 export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
-  const [step, setStep] = useState<'capture' | 'preview' | 'processing' | 'form'>('capture');
-  const [loading, setLoading] = useState(false);
+  const [step, setStep] = useState<'capture' | 'preview' | 'form'>('capture');
   const [error, setError] = useState('');
   const [flash, setFlash] = useState(false);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const lastCaptureBlobRef = useRef<Blob | null>(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
+  const [iaSuggestionBanner, setIaSuggestionBanner] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const isMobile = useIsMobile();
   const [cameraActive, setCameraActive] = useState(() => window.innerWidth <= 768);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
@@ -75,11 +68,21 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
   const startCamera = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setCameraActive(true); }
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+        audio: false,
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraActive(true);
+      }
     } catch {
       setError('No se pudo acceder a la cámara');
-      setCameraActive(false); // Mostrar opciones subir/sin imagen si falla
+      setCameraActive(false);
     }
   };
 
@@ -91,33 +94,81 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
     }
   }, [isMobile, step]);
 
-  const capturePhoto = () => {
-    if (!videoRef.current || !canvasRef.current) return;
-    const v = videoRef.current;
-    const c = canvasRef.current;
-    c.width = v.videoWidth;
-    c.height = v.videoHeight;
-    c.getContext('2d')?.drawImage(v, 0, 0);
-    const dataUrl = c.toDataURL('image/jpeg', 0.7);
-    setFlash(true);
-    setTimeout(() => setFlash(false), 200);
-    setCapturedPreview(dataUrl);
-    setStep('preview');
+  const stopCameraTracks = useCallback(() => {
     if (videoRef.current?.srcObject) {
       (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
       setCameraActive(false);
     }
+  }, []);
+
+  const runImageAnalysis = useCallback((blob: Blob) => {
+    setError('');
+    setIaSuggestionBanner(false);
+    setStep('form');
+    setCapturedPreview(null);
+    setAiAnalyzing(true);
+    stopCameraTracks();
+
+    void blobToDataUrl(blob).then(url => {
+      setForm(prev => ({ ...prev, imagen_url: prev.imagen_url.trim() ? prev.imagen_url : url }));
+    });
+
+    void api
+      .procesarImagenFile(blob)
+      .then(result => {
+        setForm(prev => ({
+          ...prev,
+          nombre_propietario: prev.nombre_propietario.trim()
+            ? prev.nombre_propietario
+            : (result.nombre || prev.nombre_propietario),
+          whatsapp: prev.whatsapp.trim() ? prev.whatsapp : (result.telefono || prev.whatsapp),
+          tiene_cargador: result.tiene_cargador ? 'si' : 'no',
+        }));
+        if (result._partial) {
+          setError('IA no disponible. Complete los datos manualmente.');
+        } else {
+          setIaSuggestionBanner(true);
+        }
+      })
+      .catch(() => {
+        setError('No se pudo analizar la imagen. Complete los datos manualmente.');
+        void blobToDataUrl(blob).then(url => {
+          setForm(prev => ({ ...prev, imagen_url: prev.imagen_url.trim() ? prev.imagen_url : url }));
+        });
+      })
+      .finally(() => setAiAnalyzing(false));
+  }, [stopCameraTracks]);
+
+  const capturePhoto = async () => {
+    if (!videoRef.current) return;
+    setCapturing(true);
+    try {
+      const blob = await captureVideoFrameToJpegBlob(videoRef.current);
+      lastCaptureBlobRef.current = blob;
+      const dataUrl = await blobToDataUrl(blob);
+      setFlash(true);
+      setTimeout(() => setFlash(false), 200);
+      setCapturedPreview(dataUrl);
+      setStep('preview');
+      stopCameraTracks();
+    } catch {
+      setError('No se pudo capturar la imagen. Intente de nuevo.');
+    } finally {
+      setCapturing(false);
+    }
   };
 
   const confirmPhoto = () => {
-    if (capturedPreview) processImage(capturedPreview);
+    const blob = lastCaptureBlobRef.current;
+    if (blob) runImageAnalysis(blob);
   };
 
   const retakePhoto = () => {
+    lastCaptureBlobRef.current = null;
     setCapturedPreview(null);
     setCameraActive(true);
     setStep('capture');
-    startCamera();
+    void startCamera();
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,7 +176,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
     if (!files.length) return;
     const all = [...photoFiles, ...files].slice(0, 10);
     if (all.length < photoFiles.length + files.length) {
-      setError('Limite maximo de 10 fotos por tarjeta');
+      setError('Límite máximo de 10 fotos por tarjeta');
     }
     setPhotoFiles(all);
     const readers = all.map(file => new Promise<string>((resolve) => {
@@ -133,40 +184,20 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
       r.onload = ev => resolve((ev.target?.result as string) || '');
       r.readAsDataURL(file);
     }));
-    Promise.all(readers).then(previews => {
+    void Promise.all(readers).then(previews => {
       setPhotoPreviews(previews.filter(Boolean));
-      if (previews[0]) processImage(previews[0]);
-      else setStep('form');
-    });
-  };
-
-  const processImage = async (imageData: string) => {
-    setLoading(true);
-    setError('');
-    setStep('processing');
-    try {
-      const result = await api.procesarImagen(imageData);
-      setForm(prev => ({
-        ...prev,
-        nombre_propietario: result.nombre || prev.nombre_propietario,
-        whatsapp: result.telefono || prev.whatsapp,
-        tiene_cargador: result.tiene_cargador ? 'si' : 'no',
-        imagen_url: imageData,
-      }));
-      if (result._partial) {
-        setError('IA no disponible. Completa los datos manualmente.');
+      const first = files[0];
+      if (first) {
+        void imageFileToJpegBlob(first)
+          .then(blob => runImageAnalysis(blob))
+          .catch(() => {
+            setError('No se pudo leer la imagen.');
+            setStep('form');
+          });
+      } else {
+        setStep('form');
       }
-    } catch {
-      setForm(prev => ({ ...prev, imagen_url: imageData }));
-      setError('No se pudo analizar la imagen. Completa los datos manualmente.');
-    }
-    setCapturedPreview(null);
-    setStep('form');
-    setLoading(false);
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      setCameraActive(false);
-    }
+    });
   };
 
   // Mejora #27: Validación con mensajes claros
@@ -242,7 +273,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-pro" onClick={e => e.stopPropagation()}>
         <div className="modal-pro-header">
-          <h3><i className="fas fa-plus-circle"></i> Nueva Reparación</h3>
+          <h3><i className="fas fa-plus-circle"></i> Nueva reparación</h3>
           <button className="modal-close" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
 
@@ -270,10 +301,9 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
                   )}
                   {flash && <div className="capture-flash" aria-hidden="true" />}
                   <video ref={videoRef} autoPlay playsInline muted className="camera-preview" />
-                  <canvas ref={canvasRef} style={{ display: 'none' }} />
-                  <button className="btn-capture btn-capture-large" onClick={capturePhoto} disabled={loading}
+                  <button className="btn-capture btn-capture-large" onClick={() => void capturePhoto()} disabled={capturing}
                     type="button" aria-label="Tomar foto">
-                    {loading ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-camera"></i>}
+                    {capturing ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-camera"></i>}
                   </button>
                 </div>
               ) : (
@@ -284,7 +314,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
                   </button>
                   <label className="capture-btn capture-btn-large">
                     <i className="fas fa-image"></i>
-                    <span>Subir imagenes</span>
+                    <span>Subir imágenes</span>
                     <input type="file" accept="image/*" multiple onChange={handleFileUpload} style={{ display: 'none' }} />
                   </label>
                   <button className="capture-btn capture-btn-large skip" onClick={() => setStep('form')} type="button">
@@ -293,15 +323,6 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
                   </button>
                 </div>
               )}
-              {loading && <div className="ai-loading"><i className="fas fa-brain fa-pulse"></i> Procesando con IA...</div>}
-            </div>
-          )}
-
-          {step === 'processing' && (
-            <div className="ai-processing-screen">
-              <i className="fas fa-brain fa-pulse"></i>
-              <p>Analizando imagen con IA...</p>
-              <div className="ai-processing-bar" />
             </div>
           )}
 
@@ -315,8 +336,8 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
                 <button className="btn-cancel" onClick={retakePhoto} type="button">
                   <i className="fas fa-redo"></i> Repetir
                 </button>
-                <button className="btn-save" onClick={confirmPhoto} disabled={loading} type="button">
-                  {loading ? <><i className="fas fa-spinner fa-spin"></i> Procesando...</> : <><i className="fas fa-check"></i> Aceptar</>}
+                <button className="btn-save" onClick={confirmPhoto} type="button">
+                  <><i className="fas fa-check"></i> Aceptar</>
                 </button>
               </div>
             </div>
@@ -324,6 +345,14 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
           {step === 'form' && (
             <div className="edit-form">
+              {aiAnalyzing && (
+                <div className="ia-analyzing-badge" role="status" aria-live="polite">
+                  <i className="fas fa-brain fa-pulse" aria-hidden="true"></i> Analizando…
+                </div>
+              )}
+              {iaSuggestionBanner && !aiAnalyzing && (
+                <p className="ia-suggestion-hint"><i className="fas fa-magic" aria-hidden="true"></i> Datos sugeridos por IA (puede editarlos).</p>
+              )}
               <div className="form-essentials">
                 <div className="form-row">
                   <div className="form-group">

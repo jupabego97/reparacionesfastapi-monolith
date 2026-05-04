@@ -56,14 +56,15 @@ export default function CalendarView({ tarjetas, onSelect }: CalendarViewProps) 
                 <div className={`cal-day-number ${hasOverdue ? 'cal-overdue' : ''}`}>{day}</div>
                 <div className="cal-items">
                     {dayTarjetas.slice(0, 3).map(t => (
-                        <div
+                        <button
                             key={t.id}
+                            type="button"
                             className={`cal-item prio-${t.prioridad}`}
                             onClick={() => onSelect(t)}
                             title={`${t.nombre_propietario} - ${t.problema}`}
                         >
                             {t.nombre_propietario?.slice(0, 12)}
-                        </div>
+                        </button>
                     ))}
                     {dayTarjetas.length > 3 && (
                         <div className="cal-more">+{dayTarjetas.length - 3} más</div>

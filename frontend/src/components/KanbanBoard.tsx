@@ -1,24 +1,16 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { DndContext, pointerWithin, closestCenter, PointerSensor, TouchSensor, useSensor, useSensors, DragOverlay, useDroppable } from '@dnd-kit/core';
-
-function useIsMobile(): boolean {
-  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 768);
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = () => setIsMobile(mq.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-  return isMobile;
-}
 import type { DragEndEvent, DragStartEvent, DragOverEvent, CollisionDetection } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { InfiniteData } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
-import type { TarjetaBoardItem, KanbanColumn } from '../api/client';
+import type { TarjetaBoardItem, KanbanColumn, TarjetasBoardResponse } from '../api/client';
 import SortableTarjetaCard from './SortableTarjetaCard';
 import TarjetaCard from './TarjetaCard';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { applyLocalColumnOrder, useLocalCardOrderPersistence } from '../hooks/useLocalCardOrder';
 
 interface Props {
   columnas: KanbanColumn[];
@@ -33,6 +25,9 @@ interface Props {
   onUnblock?: (id: number) => void;
   onMoveSuccess?: (cardId: number, oldCol: string, newCol: string) => void;
   onMoveError?: (err?: unknown) => void;
+  /** Si true, el DnD solo guarda orden en localStorage para este usuario (no persiste en servidor). */
+  personalOrderEnabled?: boolean;
+  userId?: number | null;
 }
 
 // Custom collision detection: prefer pointerWithin, fallback to closestCenter
@@ -166,6 +161,30 @@ function VirtualizedColumnList({
   );
 }
 
+type BoardInfiniteData = InfiniteData<TarjetasBoardResponse, string | undefined>;
+
+function applyReorderToBoardCache(
+  qc: ReturnType<typeof useQueryClient>,
+  items: { id: number; columna: string; posicion: number }[],
+): void {
+  const byId = new Map(items.map(i => [i.id, i]));
+  qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => {
+    if (!old || typeof old !== 'object') return old;
+    const data = old as BoardInfiniteData;
+    if (!Array.isArray(data.pages)) return old;
+    return {
+      ...data,
+      pages: data.pages.map(page => ({
+        ...page,
+        tarjetas: page.tarjetas.map((t: TarjetaBoardItem) => {
+          const upd = byId.get(t.id);
+          return upd ? { ...t, columna: upd.columna, posicion: upd.posicion } : t;
+        }),
+      })),
+    };
+  });
+}
+
 export default function KanbanBoard({
   columnas,
   tarjetas,
@@ -179,6 +198,8 @@ export default function KanbanBoard({
   onUnblock,
   onMoveSuccess,
   onMoveError,
+  personalOrderEnabled = false,
+  userId = null,
 }: Props) {
   const [activeId, setActiveId] = useState<number | null>(null);
   const [overColumn, setOverColumn] = useState<string | null>(null);
@@ -186,6 +207,7 @@ export default function KanbanBoard({
   const boardRef = useRef<HTMLDivElement | null>(null);
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
+  const { persistFromReorder } = useLocalCardOrderPersistence(userId ?? null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 100, tolerance: 8 } }),
@@ -254,7 +276,9 @@ export default function KanbanBoard({
       }
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tarjetas-board'] });
+      if (!personalOrderEnabled) {
+        queryClient.invalidateQueries({ queryKey: ['tarjetas-board'] });
+      }
     },
   });
 
@@ -273,8 +297,15 @@ export default function KanbanBoard({
     Object.keys(grouped).forEach(key => {
       grouped[key].sort((a, b) => a.posicion - b.posicion);
     });
+    if (personalOrderEnabled && userId != null) {
+      const out: Record<string, TarjetaBoardItem[]> = {};
+      columnas.forEach(c => {
+        out[c.key] = applyLocalColumnOrder(userId, c.key, grouped[c.key] || []);
+      });
+      return out;
+    }
     return grouped;
-  }, [tarjetas, columnas]);
+  }, [tarjetas, columnas, personalOrderEnabled, userId]);
 
   const groupedByPriority = useMemo(() => {
     const out: Record<string, Record<string, TarjetaBoardItem[]>> = {};
@@ -365,8 +396,23 @@ export default function KanbanBoard({
     }
     destCards.forEach((t, i) => updates.push({ id: t.id, columna: destCol, posicion: i }));
 
-    if (updates.length) batchMutation.mutate(updates);
-  }, [tarjetaById, columnas, tarjetasPorColumna, batchMutation]);
+    if (!updates.length) return;
+    if (personalOrderEnabled && userId != null) {
+      persistFromReorder(
+        columnas.map(c => c.key),
+        tarjetasPorColumna,
+        updates,
+      );
+      applyReorderToBoardCache(queryClient, updates);
+      const move = lastMoveRef.current;
+      if (move) {
+        onMoveSuccess?.(move.cardId, move.oldCol, move.newCol);
+        lastMoveRef.current = null;
+      }
+      return;
+    }
+    batchMutation.mutate(updates);
+  }, [tarjetaById, columnas, tarjetasPorColumna, batchMutation, personalOrderEnabled, userId, persistFromReorder, queryClient, onMoveSuccess]);
 
   const handleMoveViaDrop = useCallback((id: number, newCol: string) => {
     const card = tarjetaById.get(id);
@@ -376,8 +422,18 @@ export default function KanbanBoard({
     }
     const destCards = [...(tarjetasPorColumna[newCol] || [])];
     const updates = [{ id, columna: newCol, posicion: destCards.length }];
+    if (personalOrderEnabled && userId != null) {
+      persistFromReorder(columnas.map(c => c.key), tarjetasPorColumna, updates);
+      applyReorderToBoardCache(queryClient, updates);
+      const move = lastMoveRef.current;
+      if (move) {
+        onMoveSuccess?.(move.cardId, move.oldCol, move.newCol);
+        lastMoveRef.current = null;
+      }
+      return;
+    }
     batchMutation.mutate(updates);
-  }, [tarjetaById, tarjetasPorColumna, batchMutation]);
+  }, [tarjetaById, tarjetasPorColumna, batchMutation, personalOrderEnabled, userId, persistFromReorder, queryClient, columnas, onMoveSuccess]);
 
   // Stable delete handler — avoids new function ref on each render
   const handleDelete = useCallback((id: number) => deleteMutation.mutate(id), [deleteMutation]);
@@ -474,6 +530,11 @@ export default function KanbanBoard({
                   <i className={col.icon} style={{ color: col.color }}></i>
                   <span className="column-title">{col.title}</span>
                   <span className="column-count" style={{ background: col.color }}>{cards.length}</span>
+                  {personalOrderEnabled && (
+                    <span className="column-personal-order-badge" title="Solo tú ves este orden; no se guarda en el servidor">
+                      Orden personal
+                    </span>
+                  )}
                 </div>
                 {col.wip_limit != null && (
                   <div className={`wip-indicator ${wipExceeded ? 'exceeded' : ''} ${wipWarn && !wipExceeded ? 'near-limit' : ''}`}>

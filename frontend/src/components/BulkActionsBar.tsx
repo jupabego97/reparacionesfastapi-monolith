@@ -6,9 +6,10 @@ interface BulkActionsBarProps {
     columns: KanbanColumn[];
     onClear: () => void;
     onDone: () => void;
+    onError?: (message: string) => void;
 }
 
-export default function BulkActionsBar({ selectedIds, columns, onClear, onDone }: BulkActionsBarProps) {
+export default function BulkActionsBar({ selectedIds, columns, onClear, onDone, onError }: BulkActionsBarProps) {
     const [loading, setLoading] = useState(false);
 
     const run = async (action: string, value?: string | number) => {
@@ -18,7 +19,8 @@ export default function BulkActionsBar({ selectedIds, columns, onClear, onDone }
             await api.batchOperation(selectedIds, action, value);
             onDone();
         } catch (e) {
-            console.error('Batch error:', e);
+            const msg = e instanceof Error ? e.message : 'Error en operación en lote';
+            onError?.(msg);
         } finally {
             setLoading(false);
         }

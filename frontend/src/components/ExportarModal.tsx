@@ -11,11 +11,13 @@ export default function ExportarModal({ onClose }: Props) {
   const [fechaDesde, setFechaDesde] = useState('');
   const [fechaHasta, setFechaHasta] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const { data: columnas = [] } = useQuery<KanbanColumn[]>({ queryKey: ['columnas'], queryFn: api.getColumnas });
 
   const handleExport = async () => {
     setLoading(true);
+    setErrorMsg('');
     try {
       const blob = await api.exportar({ formato, estado: estado !== 'todos' ? estado : undefined, fecha_desde: fechaDesde || undefined, fecha_hasta: fechaHasta || undefined });
       const url = URL.createObjectURL(blob);
@@ -25,7 +27,7 @@ export default function ExportarModal({ onClose }: Props) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error('Error al exportar:', e);
+      setErrorMsg(e instanceof Error ? e.message : 'No se pudo exportar. Intente de nuevo.');
     }
     setLoading(false);
   };
@@ -38,6 +40,11 @@ export default function ExportarModal({ onClose }: Props) {
           <button className="modal-close" onClick={onClose}><i className="fas fa-times"></i></button>
         </div>
         <div className="modal-pro-body">
+          {errorMsg && (
+            <div className="login-error" style={{ marginBottom: '0.75rem' }}>
+              <i className="fas fa-exclamation-triangle"></i> {errorMsg}
+            </div>
+          )}
           <div className="edit-form">
             <div className="form-group">
               <label><i className="fas fa-file-alt"></i> Formato</label>

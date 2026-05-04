@@ -25,7 +25,9 @@ export default function Toast({ message, type, onClose, duration = 4000 }: Props
       <div className={`toast ${type}`}>
         <i className={icons[type]}></i>
         <span>{message}</span>
-        <button className="close-toast" onClick={onClose}><i className="fas fa-times"></i></button>
+        <button type="button" className="close-toast" onClick={onClose} aria-label="Cerrar aviso">
+          <i className="fas fa-times" aria-hidden="true"></i>
+        </button>
       </div>
     </div>
   );

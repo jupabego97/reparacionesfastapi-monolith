@@ -174,29 +174,32 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    await updateMut.mutateAsync({
-      nombre_propietario: form.nombre_propietario,
-      problema: form.problema,
-      whatsapp: form.whatsapp,
-      fecha_limite: form.fecha_limite,
-      tiene_cargador: form.tiene_cargador,
-      notas_tecnicas: form.notas_tecnicas,
-      prioridad: form.prioridad,
-      columna: form.columna || undefined,
-      asignado_a: form.asignado_a ? Number(form.asignado_a) : null,
-      costo_estimado: form.costo_estimado ? Number(form.costo_estimado) : null,
-      costo_final: form.costo_final ? Number(form.costo_final) : null,
-      notas_costo: form.notas_costo || null,
-      tags: selectedTags,
-    });
-    setSaving(false);
+    try {
+      await updateMut.mutateAsync({
+        nombre_propietario: form.nombre_propietario,
+        problema: form.problema,
+        whatsapp: form.whatsapp,
+        fecha_limite: form.fecha_limite,
+        tiene_cargador: form.tiene_cargador,
+        notas_tecnicas: form.notas_tecnicas,
+        prioridad: form.prioridad,
+        columna: form.columna || undefined,
+        asignado_a: form.asignado_a ? Number(form.asignado_a) : null,
+        costo_estimado: form.costo_estimado ? Number(form.costo_estimado) : null,
+        costo_final: form.costo_final ? Number(form.costo_final) : null,
+        notas_costo: form.notas_costo || null,
+        tags: selectedTags,
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     if (media.length + files.length > 10) {
-      setPhotoError('Limite maximo de 10 fotos por tarjeta');
+      setPhotoError('Límite máximo de 10 fotos por tarjeta');
       return;
     }
     setPhotoError('');
@@ -219,7 +222,7 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
       <div className="modal-overlay" onClick={onClose} onKeyDown={handleKeyDown}>
         <div className="modal-pro modal-lg" ref={modalRef} onClick={e => e.stopPropagation()}>
           <div className="modal-pro-header">
-            <h3><i className="fas fa-pen-fancy"></i> Editar Reparacion #{tarjetaId}</h3>
+            <h3><i className="fas fa-pen-fancy"></i> Editar reparación #{tarjetaId}</h3>
             <button className="modal-close" onClick={onClose}><i className="fas fa-times"></i></button>
           </div>
 
@@ -229,11 +232,26 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
             <>
               <div className="modal-tabs">
                 {[
-                  { key: 'info', icon: 'fas fa-info-circle', label: 'Info', tooltip: 'Informacion y costos' },
-                  { key: 'subtasks', icon: 'fas fa-tasks', label: `Tareas (${subtasks.length})`, tooltip: 'Subtareas' },
-                  { key: 'comments', icon: 'fas fa-comments', label: `Comentarios (${comments.length})`, tooltip: 'Comentarios' },
+                  { key: 'info', icon: 'fas fa-info-circle', label: 'Info', tooltip: 'Información y costos' },
+                  {
+                    key: 'subtasks',
+                    icon: 'fas fa-tasks',
+                    label: `Tareas (${tab === 'subtasks' ? subtasks.length : tarjeta.subtasks_total ?? 0})`,
+                    tooltip: 'Subtareas',
+                  },
+                  {
+                    key: 'comments',
+                    icon: 'fas fa-comments',
+                    label: `Comentarios (${tab === 'comments' ? comments.length : tarjeta.comments_count ?? 0})`,
+                    tooltip: 'Comentarios',
+                  },
                   { key: 'history', icon: 'fas fa-history', label: 'Historial', tooltip: 'Historial' },
-                  { key: 'photos', icon: 'fas fa-images', label: `Fotos (${media.length})`, tooltip: 'Fotos' },
+                  {
+                    key: 'photos',
+                    icon: 'fas fa-images',
+                    label: `Fotos (${tab === 'photos' ? media.length : tarjeta.media_count ?? 0})`,
+                    tooltip: 'Fotos',
+                  },
                 ].map(t => (
                   <button key={t.key} className={`modal-tab ${tab === t.key ? 'active' : ''}`}
                     onClick={() => setTab(t.key as TabKey)} data-tooltip={t.tooltip}>
@@ -423,7 +441,7 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                           <p className="comment-body">{c.content}</p>
                         </div>
                       ))}
-                      {comments.length === 0 && <p className="empty-msg"><i className="fas fa-comment-slash"></i> Sin comentarios aun</p>}
+                      {comments.length === 0 && <p className="empty-msg"><i className="fas fa-comment-slash"></i> Sin comentarios aún</p>}
                     </div>
                   </div>
                 )}

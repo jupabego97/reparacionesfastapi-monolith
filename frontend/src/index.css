@@ -3,6 +3,7 @@
 /* ==================== CSS Variables ==================== */
 :root,
 [data-theme="light"] {
+  --bg-main: #f0f2f5;
   --bg-primary: #f0f2f5;
   --bg-secondary: #ffffff;
   --bg-card: #ffffff;
@@ -34,6 +35,7 @@
 }
 
 [data-theme="dark"] {
+  --bg-main: #0f172a;
   --bg-primary: #0f172a;
   --bg-secondary: #1e293b;
   --bg-card: #1e293b;
@@ -814,6 +816,18 @@ body {
   padding: 0 6px;
 }
 
+.column-personal-order-badge {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0.1rem 0.35rem;
+  white-space: nowrap;
+}
+
 .wip-indicator {
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -1590,6 +1604,10 @@ body {
   from {
     opacity: 0;
   }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-pro {
@@ -1602,6 +1620,25 @@ body {
   display: flex;
   flex-direction: column;
   animation: slideUp 0.3s ease-out;
+}
+
+.ia-analyzing-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.ia-suggestion-hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
 }
 
 .modal-pro.modal-lg {
@@ -3523,16 +3560,6 @@ body {
   }
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-
-  to {
-    opacity: 1;
-  }
-}
-
 .side-panel-header {
   display: flex;
   justify-content: space-between;
@@ -3757,9 +3784,14 @@ body {
 }
 
 .cal-item {
+  display: block;
+  font: inherit;
   font-size: 0.65rem;
   padding: 0.15rem 0.35rem;
+  border: none;
   border-radius: 3px;
+  width: 100%;
+  text-align: left;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3812,10 +3844,10 @@ body {
   align-items: center;
   gap: 1rem;
   box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
-  animation: slideUp 0.3s ease;
+  animation: slideUpBulkBar 0.3s ease;
 }
 
-@keyframes slideUp {
+@keyframes slideUpBulkBar {
   from {
     transform: translateY(100%);
   }
