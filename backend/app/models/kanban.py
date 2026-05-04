@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, Table, Text
 
+from app.core.datetime_fmt import utc_iso_z
 from app.core.database import Base
 
 # --- Tabla intermedia para relación M:N tarjetas <-> tags ---
@@ -87,8 +88,8 @@ class SubTask(Base):
             "title": self.title,
             "completed": self.completed,
             "position": self.position,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
-            "completed_at": self.completed_at.strftime("%Y-%m-%d %H:%M:%S") if self.completed_at else None,
+            "created_at": utc_iso_z(self.created_at),
+            "completed_at": utc_iso_z(self.completed_at),
         }
 
 
@@ -110,7 +111,7 @@ class Comment(Base):
             "user_id": self.user_id,
             "author_name": self.author_name,
             "content": self.content,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "created_at": utc_iso_z(self.created_at),
         }
 
 
@@ -139,8 +140,8 @@ class Notification(Base):
             "severity": self.type,
             "action_url": f"/tarjeta/{self.tarjeta_id}" if self.tarjeta_id else None,
             "read": self.read,
-            "read_at": read_at.strftime("%Y-%m-%d %H:%M:%S") if read_at else None,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "read_at": utc_iso_z(read_at),
+            "created_at": utc_iso_z(self.created_at),
         }
 
 
@@ -164,5 +165,5 @@ class CardTemplate(Base):
             "default_priority": self.default_priority,
             "default_notes": self.default_notes,
             "estimated_hours": self.estimated_hours,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
+            "created_at": utc_iso_z(self.created_at),
         }

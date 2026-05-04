@@ -45,6 +45,27 @@ export function formatYmdColombiaShort(ymd: string): string {
 }
 
 /**
+ * Interpreta el instante que envía el API: ISO con Z, o legado sin zona
+ * (el servidor guardaba UTC como "YYYY-MM-DD HH:mm:ss").
+ */
+export function parseBackendInstant(raw: string): Date {
+  const s = String(raw).trim();
+  if (!s) return new Date(NaN);
+  if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(s)) {
+    return new Date(s);
+  }
+  const legacySpace = /^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)$/.exec(s);
+  if (legacySpace) {
+    return new Date(`${legacySpace[1]}T${legacySpace[2]}Z`);
+  }
+  const isoT = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?)$/.exec(s);
+  if (isoT) {
+    return new Date(`${isoT[1]}T${isoT[2]}Z`);
+  }
+  return new Date(s);
+}
+
+/**
  * Formatea instante ISO del API (UTC) como fecha/hora en Colombia.
  */
 export function formatDateTimeColombia(
@@ -52,7 +73,7 @@ export function formatDateTimeColombia(
   options?: Intl.DateTimeFormatOptions,
 ): string {
   if (raw == null || String(raw).trim() === '') return '—';
-  const d = new Date(raw);
+  const d = parseBackendInstant(String(raw));
   if (Number.isNaN(d.getTime())) return String(raw);
   return new Intl.DateTimeFormat('es-CO', {
     timeZone: COLOMBIA_TZ,

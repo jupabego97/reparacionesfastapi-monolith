@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, Text
 
+from app.core.datetime_fmt import utc_iso_z
 from app.core.database import Base
 
 
@@ -60,13 +61,13 @@ class RepairCard(Base):
             "nombre_propietario": self.owner_name,
             "problema": self.problem,
             "whatsapp": self.whatsapp_number,
-            "fecha_inicio": self.start_date.strftime("%Y-%m-%d %H:%M:%S") if self.start_date else None,
+            "fecha_inicio": utc_iso_z(self.start_date),
             "fecha_limite": self.due_date.strftime("%Y-%m-%d") if self.due_date else None,
             "columna": self.status,
             "tiene_cargador": self.has_charger,
-            "fecha_diagnosticada": self.diagnosticada_date.strftime("%Y-%m-%d %H:%M:%S") if self.diagnosticada_date else None,
-            "fecha_para_entregar": self.para_entregar_date.strftime("%Y-%m-%d %H:%M:%S") if self.para_entregar_date else None,
-            "fecha_entregada": self.entregados_date.strftime("%Y-%m-%d %H:%M:%S") if self.entregados_date else None,
+            "fecha_diagnosticada": utc_iso_z(self.diagnosticada_date),
+            "fecha_para_entregar": utc_iso_z(self.para_entregar_date),
+            "fecha_entregada": utc_iso_z(self.entregados_date),
             "notas_tecnicas": self.technical_notes,
             # Nuevos campos
             "prioridad": self.priority,
@@ -80,7 +81,7 @@ class RepairCard(Base):
             "bloqueada": self.blocked_at is not None,
             "motivo_bloqueo": self.blocked_reason,
             "bloqueada_por": self.blocked_by,
-            "fecha_bloqueo": self.blocked_at.strftime("%Y-%m-%d %H:%M:%S") if self.blocked_at else None,
+            "fecha_bloqueo": utc_iso_z(self.blocked_at),
         }
         d["imagen_url"] = self.image_url if include_image else None
         return d
@@ -106,7 +107,7 @@ class StatusHistory(Base):
             "tarjeta_id": self.tarjeta_id,
             "old_status": self.old_status,
             "new_status": self.new_status,
-            "changed_at": self.changed_at.strftime("%Y-%m-%d %H:%M:%S") if self.changed_at else None,
+            "changed_at": utc_iso_z(self.changed_at),
             "changed_by": self.changed_by,
             "changed_by_name": self.changed_by_name,
         }
@@ -141,6 +142,6 @@ class RepairCardMedia(Base):
             "is_cover": self.is_cover,
             "mime_type": self.mime_type,
             "size_bytes": self.size_bytes,
-            "created_at": self.created_at.strftime("%Y-%m-%d %H:%M:%S") if self.created_at else None,
-            "deleted_at": self.deleted_at.strftime("%Y-%m-%d %H:%M:%S") if self.deleted_at else None,
+            "created_at": utc_iso_z(self.created_at),
+            "deleted_at": utc_iso_z(self.deleted_at),
         }
