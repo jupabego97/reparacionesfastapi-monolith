@@ -33,12 +33,8 @@ from app.schemas.tarjeta import (
 from app.services.auth_service import get_current_user, get_current_user_optional, require_role
 from app.services.notification_service import notificar_cambio_estado
 from app.services.storage_service import get_storage_service
-from app.services.whatsapp_service import (
-    build_tarjeta_created_body,
-    is_whatsapp_send_configured,
-    normalize_whatsapp_digits,
-    send_whatsapp_message,
-)
+from app.services.tarjeta_notify_service import notify_tarjeta_created
+from app.services.tracking_service import ensure_tracking_token, generate_tracking_token
 from app.socket_events import sio
 
 router = APIRouter(prefix="/api/tarjetas", tags=["tarjetas"])
@@ -618,78 +614,10 @@ async def notify_tarjeta_created_whatsapp(
 ):
     """Dispara WhatsApp al cliente tras crear la tarjeta (y fotos). Idempotente si ya se envió."""
     settings = get_settings()
-    t = db.query(RepairCard).filter(RepairCard.id == id, RepairCard.deleted_at.is_(None)).first()
-    if not t:
-        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
-
-    already = (
-        db.query(OutboundMessage)
-        .filter(
-            OutboundMessage.tarjeta_id == id,
-            OutboundMessage.event == "tarjeta_created",
-            OutboundMessage.status == "sent",
-        )
-        .first()
-    )
-    if already:
-        return {
-            "status": "skipped",
-            "message": "Ya se envió WhatsApp para esta tarjeta",
-            "provider_message_id": already.provider_message_id,
-        }
-
-    cc = (settings.whatsapp_default_country_code or "57").strip().lstrip("+") or "57"
-    digits = normalize_whatsapp_digits(t.whatsapp_number, cc)
-    if not digits:
-        _log_outbound(
-            db,
-            tarjeta_id=id,
-            recipient="",
-            event="tarjeta_created",
-            status="skipped",
-            error="invalid_phone",
-        )
-        return {"status": "skipped", "message": "Teléfono WhatsApp inválido o vacío"}
-
-    if not is_whatsapp_send_configured(settings):
-        _log_outbound(
-            db,
-            tarjeta_id=id,
-            recipient=digits,
-            event="tarjeta_created",
-            status="skipped",
-            error="whatsapp_not_configured",
-        )
-        return {"status": "skipped", "message": "WhatsApp no está configurado en el servidor"}
-
-    body = build_tarjeta_created_body(t)
-    result = await send_whatsapp_message(settings, to_digits=digits, body_text=body, tarjeta=t)
-
-    if result.ok:
-        _log_outbound(
-            db,
-            tarjeta_id=id,
-            recipient=digits,
-            event="tarjeta_created",
-            status="sent",
-            provider_message_id=result.provider_message_id,
-        )
-        return {
-            "status": "sent",
-            "message": "Mensaje enviado",
-            "provider_message_id": result.provider_message_id,
-        }
-
-    err = result.error or "unknown_error"
-    _log_outbound(
-        db,
-        tarjeta_id=id,
-        recipient=digits,
-        event="tarjeta_created",
-        status="failed",
-        error=err[:2000] if err else None,
-    )
-    return {"status": "failed", "message": err}
+    out = await notify_tarjeta_created(db, settings, id)
+    if out.get("http_status") == 404:
+        raise HTTPException(status_code=404, detail=out.get("message", "Tarjeta no encontrada"))
+    return {k: v for k, v in out.items() if k != "http_status"}
 
 
 @router.post("", status_code=201)
@@ -753,6 +681,7 @@ async def create_tarjeta(
         assigned_to=data.asignado_a,
         assigned_name=assigned_name,
         estimated_cost=data.costo_estimado,
+        tracking_token=generate_tracking_token(),
     )
     db.add(t)
     try:

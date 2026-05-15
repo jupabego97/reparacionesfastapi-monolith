@@ -71,6 +71,24 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
   const [newSubtask, setNewSubtask] = useState('');
   const [newComment, setNewComment] = useState('');
   const [photoError, setPhotoError] = useState('');
+  const [waNotifyMsg, setWaNotifyMsg] = useState('');
+
+  const notifyWaMut = useMutation({
+    mutationFn: () => api.notifyTarjetaCreated(tarjetaId),
+    onSuccess: (r) => {
+      if (r.status === 'sent') {
+        setWaNotifyMsg('WhatsApp enviado con enlace a fotos.');
+      } else if (r.status === 'skipped' && (r.message || '').toLowerCase().includes('ya se envió')) {
+        setWaNotifyMsg('El aviso ya había sido enviado.');
+      } else {
+        setWaNotifyMsg(r.message || `Estado: ${r.status}`);
+      }
+      void qc.invalidateQueries({ queryKey: ['tarjetas'] });
+    },
+    onError: (e: unknown) => {
+      setWaNotifyMsg(e instanceof Error ? e.message : 'Error al enviar');
+    },
+  });
 
   useEffect(() => {
     if (!tarjeta) return;
@@ -272,6 +290,29 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
                       <div className="form-group">
                         <label><i className="fab fa-whatsapp"></i> WhatsApp</label>
                         <input value={form.whatsapp} onChange={e => setForm({ ...form, whatsapp: e.target.value })} placeholder="+57 300 123 4567" />
+                        {form.whatsapp.trim() && (
+                          <button
+                            type="button"
+                            className="btn-secondary-sm"
+                            style={{ marginTop: '0.35rem' }}
+                            disabled={notifyWaMut.isPending}
+                            onClick={() => {
+                              setWaNotifyMsg('');
+                              notifyWaMut.mutate();
+                            }}
+                          >
+                            {notifyWaMut.isPending ? (
+                              <><i className="fas fa-spinner fa-spin" /> Enviando…</>
+                            ) : (
+                              <><i className="fab fa-whatsapp" /> Reenviar aviso al cliente</>
+                            )}
+                          </button>
+                        )}
+                        {waNotifyMsg && (
+                          <span className="field-hint-muted" style={{ display: 'block', marginTop: '0.25rem' }}>
+                            {waNotifyMsg}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="form-group">

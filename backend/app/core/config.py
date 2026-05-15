@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     use_s3_storage: bool = Field(default=False, validation_alias=AliasChoices("USE_S3_STORAGE", "R2_ENABLED"))
     media_v2_read_write: bool = True
 
+    public_app_base_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("PUBLIC_APP_BASE_URL", "VITE_PUBLIC_APP_URL"),
+    )
+
     # --- WhatsApp Business (Meta Cloud API) ---
     whatsapp_enabled: bool = Field(default=False, validation_alias=AliasChoices("WHATSAPP_ENABLED"))
     whatsapp_access_token: str = Field(default="", validation_alias=AliasChoices("WHATSAPP_ACCESS_TOKEN"))

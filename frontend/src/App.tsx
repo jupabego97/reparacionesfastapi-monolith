@@ -17,6 +17,7 @@ import BulkActionsBar from './components/BulkActionsBar';
 import { EmptyState, ErrorState } from './components/UiState';
 import { useDebounce } from './hooks/useDebounce';
 import { useIsMobile } from './hooks/useIsMobile';
+import SeguimientoPage from './pages/SeguimientoPage';
 
 const NuevaTarjetaModal = lazy(() => import('./components/NuevaTarjetaModal'));
 const EditarTarjetaModal = lazy(() => import('./components/EditarTarjetaModal'));
@@ -127,7 +128,17 @@ async function fetchBoardCards(params: {
   });
 }
 
+function parseSeguimientoToken(): string | null {
+  const m = /^\/seguimiento\/([^/]+)\/?$/.exec(window.location.pathname);
+  return m?.[1]?.trim() || null;
+}
+
 export default function App() {
+  const seguimientoToken = parseSeguimientoToken();
+  if (seguimientoToken) {
+    return <SeguimientoPage token={seguimientoToken} />;
+  }
+
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();

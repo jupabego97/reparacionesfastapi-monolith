@@ -52,6 +52,9 @@ class RepairCard(Base):
     blocked_reason = Column(Text, nullable=True)
     blocked_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 
+    # Link público /seguimiento/{token} para fotos (cliente)
+    tracking_token = Column(Text, nullable=True, unique=True, index=True)
+
     # --- Mejora #10: Tags (via relación M:N) ---
     # Se accede vía join, no relación directa para evitar imports circulares
 

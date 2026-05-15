@@ -40,11 +40,18 @@ def test_template_body_params_empty_behaves_as_auto():
         owner_name = "Ana"
         problem = "Pantalla rota"
         id = 42
-        due_date = None
+        tracking_token = "tok_test_abc"
 
-    settings = type("S", (), {"whatsapp_template_body_params_json": ""})()
-    out = ws_mod._template_body_parameters(settings, FakeTarjeta())
-    assert out == ["Ana", "42", "Pantalla rota", "Sin fecha límite"]
+    settings = type(
+        "S",
+        (),
+        {
+            "whatsapp_template_body_params_json": "",
+            "public_app_base_url": "",
+        },
+    )()
+    out = ws_mod._template_body_parameters(settings, FakeTarjeta(), None)
+    assert out == ["Ana", "42", "Pantalla rota", "tok_test_abc"]
 
 
 def test_template_body_params_json_empty_list():

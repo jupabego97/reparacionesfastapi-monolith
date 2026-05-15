@@ -260,7 +260,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
       try {
         const nr = await api.notifyTarjetaCreated(created.id);
         if (nr.status === 'sent') {
-          setSuccessBanner('WhatsApp enviado al cliente (Meta).');
+          setSuccessBanner('WhatsApp enviado al cliente con enlace a las fotos.');
           await new Promise(r => setTimeout(r, 1000));
           setSuccessBanner('');
           onClose();

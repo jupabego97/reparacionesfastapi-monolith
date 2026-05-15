@@ -12,7 +12,10 @@ from typing import Any
 import httpx
 from loguru import logger
 
+from sqlalchemy.orm import Session
+
 from app.core.config import Settings
+from app.services.tracking_service import build_public_seguimiento_url
 
 
 @dataclass
@@ -44,19 +47,22 @@ def is_whatsapp_send_configured(settings: Settings) -> bool:
     return bool(token and phone_id)
 
 
-def build_tarjeta_created_body(tarjeta: Any) -> str:
+def build_tarjeta_created_body(tarjeta: Any, *, photos_url: str | None = None) -> str:
     """Texto plano para mensaje de confirmación al cliente (sin fecha de vencimiento)."""
     nombre = (getattr(tarjeta, "owner_name", None) or "Cliente").strip()
     prob = (getattr(tarjeta, "problem", None) or "Sin descripción").strip()
     if len(prob) > 500:
         prob = prob[:497] + "..."
     tid = getattr(tarjeta, "id", "") or "?"
-    return (
-        f"Hola {nombre}, registramos tu equipo para reparación.\n"
-        f"Folio: #{tid}\n"
-        f"Motivo: {prob}\n"
-        "Te avisaremos por este canal cuando haya novedades."
-    )
+    lines = [
+        f"Hola {nombre}, registramos tu equipo para reparación.",
+        f"Folio: #{tid}",
+        f"Motivo: {prob}",
+    ]
+    if photos_url:
+        lines.append(f"Fotos del equipo: {photos_url}")
+    lines.append("Te avisaremos por este canal cuando haya novedades.")
+    return "\n".join(lines)
 
 
 def _template_text_non_empty(value: str, fallback: str = "—") -> str:
@@ -65,17 +71,26 @@ def _template_text_non_empty(value: str, fallback: str = "—") -> str:
     return s if s else fallback
 
 
-def default_template_body_parameters(tarjeta: Any) -> list[str]:
-    """Valores por defecto para variables de plantilla (body). La 4ª era fecha límite: placeholder si no aplica."""
+def default_template_body_parameters(
+    settings: Settings,
+    tarjeta: Any,
+    db: Session | None = None,
+) -> list[str]:
+    """Variables plantilla: nombre, folio, motivo, enlace público con fotos."""
     nombre = _template_text_non_empty((getattr(tarjeta, "owner_name", None) or "Cliente").strip(), "Cliente")
     prob = _template_text_non_empty((getattr(tarjeta, "problem", None) or "")[:120], "Sin descripción")
     tid = _template_text_non_empty(str(getattr(tarjeta, "id", "") or ""), "?")
-    # Cuarto slot (plantillas de 4 vars): nunca vacío — Meta Cloud API falla con (#131008).
-    fourth = "Sin fecha límite"
+    fourth = "—"
+    if db is not None:
+        url = build_public_seguimiento_url(settings, tarjeta, db)
+        if url:
+            fourth = url
+    else:
+        fourth = _template_text_non_empty(getattr(tarjeta, "tracking_token", None), "—")
     return [nombre, tid, prob, fourth]
 
 
-def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[str] | None:
+def _template_body_parameters(settings: Settings, tarjeta: Any | None, db: Session | None = None) -> list[str] | None:
     """Parámetros del body de la plantilla Meta.
 
     - Vacío o ``auto``: rellena con datos de la tarjeta (nombre, folio, problema, fecha vacía).
@@ -86,7 +101,7 @@ def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[s
     if not raw or raw.lower() == "auto":
         if tarjeta is None:
             return []
-        return default_template_body_parameters(tarjeta)
+        return default_template_body_parameters(settings, tarjeta, db)
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
@@ -102,12 +117,13 @@ def _build_payload(
     to_digits: str,
     body_text: str,
     tarjeta: Any | None,
+    db: Session | None = None,
 ) -> dict[str, Any]:
     tpl_name = (getattr(settings, "whatsapp_template_name", "") or "").strip()
     if tpl_name:
         lang = (getattr(settings, "whatsapp_template_language", None) or "es").strip() or "es"
         tpl: dict[str, Any] = {"name": tpl_name, "language": {"code": lang}}
-        params = _template_body_parameters(settings, tarjeta)
+        params = _template_body_parameters(settings, tarjeta, db)
         # params == [] → plantilla sin variables de body; no añadir components
         if params is not None and len(params) > 0:
             safe_params = [_template_text_non_empty(str(p), "—") for p in params]
@@ -136,6 +152,7 @@ async def send_whatsapp_message(
     to_digits: str,
     body_text: str,
     tarjeta: Any | None = None,
+    db: Session | None = None,
 ) -> WhatsappSendResult:
     """POST a /messages de Graph API."""
     if not is_whatsapp_send_configured(settings):
@@ -152,7 +169,7 @@ async def send_whatsapp_message(
             "Meta suele exigir plantilla aprobada para el primer contacto al cliente."
         )
 
-    payload = _build_payload(settings, to_digits, body_text, tarjeta)
+    payload = _build_payload(settings, to_digits, body_text, tarjeta, db)
 
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 

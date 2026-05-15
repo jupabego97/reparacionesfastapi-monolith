@@ -19,6 +19,7 @@ from app.api.routes import users as users_routes
 from app.api.routes.multimedia import executor
 from app.core.config import get_settings
 from app.core.database import Base, SessionLocal, engine
+from app.core.schema_bootstrap import run_schema_bootstrap
 from app.core.errors import default_code_for_status
 from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
@@ -105,6 +106,7 @@ async def lifespan(app: FastAPI):
     # Crear tablas nuevas automáticamente solo en entornos no productivos
     if not settings.is_production:
         Base.metadata.create_all(bind=engine)
+    run_schema_bootstrap()
 
     # Crear admin por defecto
     db = SessionLocal()
@@ -258,10 +260,11 @@ def create_app() -> FastAPI:
     app.include_router(kanban_routes.router)
     app.include_router(users_routes.router)
 
-    from app.api.routes import actividad, metricas, plantillas
+    from app.api.routes import actividad, metricas, plantillas, public
     app.include_router(metricas.router)
     app.include_router(actividad.router)
     app.include_router(plantillas.router)
+    app.include_router(public.router)
 
     _mount_frontend(app)
 
