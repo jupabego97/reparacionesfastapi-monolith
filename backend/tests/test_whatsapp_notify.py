@@ -44,7 +44,7 @@ def test_template_body_params_empty_behaves_as_auto():
 
     settings = type("S", (), {"whatsapp_template_body_params_json": ""})()
     out = ws_mod._template_body_parameters(settings, FakeTarjeta())
-    assert out == ["Ana", "42", "Pantalla rota", ""]
+    assert out == ["Ana", "42", "Pantalla rota", "Sin fecha límite"]
 
 
 def test_template_body_params_json_empty_list():

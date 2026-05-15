@@ -59,12 +59,20 @@ def build_tarjeta_created_body(tarjeta: Any) -> str:
     )
 
 
+def _template_text_non_empty(value: str, fallback: str = "—") -> str:
+    """Meta rechaza variables de plantilla con texto vacío (#131008)."""
+    s = (value or "").strip()
+    return s if s else fallback
+
+
 def default_template_body_parameters(tarjeta: Any) -> list[str]:
-    """Valores por defecto para variables de plantilla (body). La 4ª posición queda vacía (sin fecha de vencimiento)."""
-    nombre = (getattr(tarjeta, "owner_name", None) or "Cliente").strip()
-    prob = (getattr(tarjeta, "problem", None) or "")[:120]
-    tid = str(getattr(tarjeta, "id", "") or "")
-    return [nombre, tid, prob, ""]
+    """Valores por defecto para variables de plantilla (body). La 4ª era fecha límite: placeholder si no aplica."""
+    nombre = _template_text_non_empty((getattr(tarjeta, "owner_name", None) or "Cliente").strip(), "Cliente")
+    prob = _template_text_non_empty((getattr(tarjeta, "problem", None) or "")[:120], "Sin descripción")
+    tid = _template_text_non_empty(str(getattr(tarjeta, "id", "") or ""), "?")
+    # Cuarto slot (plantillas de 4 vars): nunca vacío — Meta Cloud API falla con (#131008).
+    fourth = "Sin fecha límite"
+    return [nombre, tid, prob, fourth]
 
 
 def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[str] | None:
@@ -86,7 +94,7 @@ def _template_body_parameters(settings: Settings, tarjeta: Any | None) -> list[s
         return []
     if not isinstance(data, list):
         return []
-    return [str(x) for x in data]
+    return [_template_text_non_empty(str(x), "—") for x in data]
 
 
 def _build_payload(
@@ -102,8 +110,9 @@ def _build_payload(
         params = _template_body_parameters(settings, tarjeta)
         # params == [] → plantilla sin variables de body; no añadir components
         if params is not None and len(params) > 0:
+            safe_params = [_template_text_non_empty(str(p), "—") for p in params]
             tpl["components"] = [
-                {"type": "body", "parameters": [{"type": "text", "text": p} for p in params]},
+                {"type": "body", "parameters": [{"type": "text", "text": p} for p in safe_params]},
             ]
         return {
             "messaging_product": "whatsapp",
