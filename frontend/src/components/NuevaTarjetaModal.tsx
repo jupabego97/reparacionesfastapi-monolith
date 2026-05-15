@@ -47,6 +47,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const [selectedTags, setSelectedTags] = useState<number[]>([]);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [successBanner, setSuccessBanner] = useState('');
 
   const { data: allTags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.getUsers });
@@ -248,24 +249,61 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
       onSuccess?.();
 
-      const waUrl = newTarjetaCreatedWhatsAppUrl(
-        created.whatsapp ?? form.whatsapp.trim(),
-        created.nombre_propietario ?? form.nombre_propietario.trim(),
-        created.id,
-        created.problema ?? (form.problema.trim() || 'Sin descripción'),
-      );
-      if (waUrl) {
-        // Navegación normal (sin popup) para evitar permisos del navegador.
-        window.location.href = waUrl;
-        return;
-      } else if (form.whatsapp.trim()) {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
         setError(
-          'Tarjeta creada. El número de WhatsApp no es válido para abrir el chat (incluya código de país o 10 dígitos móvil CO).',
+          'Tarjeta creada. Inicie sesión para enviar el aviso por WhatsApp (Meta) o abra el chat desde la tarjeta.',
         );
         return;
       }
 
-      onClose();
+      try {
+        const nr = await api.notifyTarjetaCreated(created.id);
+        if (nr.status === 'sent') {
+          setSuccessBanner('WhatsApp enviado al cliente (Meta).');
+          await new Promise(r => setTimeout(r, 1000));
+          setSuccessBanner('');
+          onClose();
+          return;
+        }
+        if (nr.status === 'skipped') {
+          const m = (nr.message || '').toLowerCase();
+          if (m.includes('ya se envió')) {
+            setSuccessBanner('El aviso por WhatsApp ya estaba enviado para esta tarjeta.');
+            await new Promise(r => setTimeout(r, 800));
+            setSuccessBanner('');
+            onClose();
+            return;
+          }
+          if (m.includes('no está configurado')) {
+            const waUrl = newTarjetaCreatedWhatsAppUrl(
+              created.whatsapp ?? form.whatsapp.trim(),
+              created.nombre_propietario ?? form.nombre_propietario.trim(),
+              created.id,
+              created.problema ?? (form.problema.trim() || 'Sin descripción'),
+            );
+            if (waUrl) {
+              window.location.href = waUrl;
+              return;
+            }
+            setError(`Tarjeta creada. ${nr.message || 'WhatsApp no configurado en el servidor.'}`);
+            return;
+          }
+          if (m.includes('inválido') || m.includes('vacío')) {
+            onClose();
+            return;
+          }
+          setError(`Tarjeta creada. WhatsApp no se envió: ${nr.message || 'omitido'}`);
+          return;
+        }
+        setError(`Tarjeta creada. WhatsApp falló: ${nr.message || 'error desconocido'}`);
+        return;
+      } catch (e) {
+        setError(
+          `Tarjeta creada. Error al enviar WhatsApp: ${e instanceof Error ? e.message : 'Error de red o servidor'}`,
+        );
+        return;
+      }
     } catch {
       setUploadState('idle');
     }
@@ -281,6 +319,14 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
         <div className="modal-pro-body">
           {error && <div className="login-error"><i className="fas fa-exclamation-triangle"></i> {error}</div>}
+          {successBanner && (
+            <div
+              className="login-error"
+              style={{ background: 'rgba(34,197,94,0.15)', borderColor: 'rgba(34,197,94,0.5)', color: '#166534' }}
+            >
+              <i className="fas fa-check-circle"></i> {successBanner}
+            </div>
+          )}
           {step === 'capture' && (
             <div className={`capture-step ${isMobile && cameraActive ? 'camera-fullscreen' : ''}`}>
               {!cameraActive && (
