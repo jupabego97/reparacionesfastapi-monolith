@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../api/client';
 import type { Tag, UserInfo, TarjetaCreate, Tarjeta } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl } from '../utils/imageCapture';
+import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl, openUserCamera } from '../utils/imageCapture';
 import { newTarjetaCreatedWhatsAppUrl } from '../utils/whatsappUrl';
 import { tomorrowColombiaISO } from '../utils/colombiaTime';
 import TicketIngresoDialog from './TicketIngresoDialog';
@@ -28,7 +28,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const [iaSuggestionBanner, setIaSuggestionBanner] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const isMobile = useIsMobile();
-  const [cameraActive, setCameraActive] = useState(() => window.innerWidth <= 768);
+  const [cameraActive, setCameraActive] = useState(false);
   const [photoFiles, setPhotoFiles] = useState<File[]>([]);
   const [photoPreviews, setPhotoPreviews] = useState<string[]>([]);
   const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'partial_failed' | 'done'>('idle');
@@ -61,48 +61,67 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
     onError: (e: unknown) => setError(e instanceof Error ? e.message : 'Error al crear'),
   });
 
-  useEffect(() => {
-    const currentVideo = videoRef.current;
-    return () => {
-      if (currentVideo?.srcObject) {
-        (currentVideo.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      }
-    };
+  const startCamera = useCallback(() => {
+    setError('');
+    setCameraActive(true);
   }, []);
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-        audio: false,
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setCameraActive(true);
-      }
-    } catch {
-      setError('No se pudo acceder a la cámara');
-      setCameraActive(false);
-    }
-  };
+  useLayoutEffect(() => {
+    if (!cameraActive || step !== 'capture') return;
 
-  // En móvil: ir directo a la cámara al abrir, sin menú de opciones
+    let cancelled = false;
+    let stream: MediaStream | null = null;
+    let raf = 0;
+
+    const attach = () => {
+      const video = videoRef.current;
+      if (!video) {
+        raf = requestAnimationFrame(attach);
+        return;
+      }
+      void (async () => {
+        try {
+          stream = await openUserCamera();
+          if (cancelled) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          const el = videoRef.current;
+          if (!el) {
+            stream.getTracks().forEach(t => t.stop());
+            return;
+          }
+          el.srcObject = stream;
+          await el.play().catch(() => undefined);
+        } catch {
+          if (!cancelled) {
+            setError('No se pudo acceder a la cámara. Pruebe subir una imagen o usar HTTPS.');
+            setCameraActive(false);
+          }
+          stream?.getTracks().forEach(t => t.stop());
+        }
+      })();
+    };
+    attach();
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      const el = videoRef.current;
+      const attached = (el?.srcObject as MediaStream | null) || stream;
+      attached?.getTracks().forEach(t => t.stop());
+      if (el) el.srcObject = null;
+    };
+  }, [cameraActive, step]);
+
   useEffect(() => {
     if (isMobile && step === 'capture') {
-      setCameraActive(true);
       startCamera();
     }
-  }, [isMobile, step]);
+  }, [isMobile, step, startCamera]);
 
   const stopCameraTracks = useCallback(() => {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-      setCameraActive(false);
-    }
+    setCameraActive(false);
   }, []);
 
   const runImageAnalysis = useCallback((blob: Blob) => {
@@ -342,7 +361,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
               {cameraActive ? (
                 <div className={`camera-container ${isMobile ? 'camera-fullscreen-inner' : ''}`}>
                   {isMobile && (
-                    <button type="button" className="camera-back-btn" onClick={() => { (videoRef.current?.srcObject as MediaStream)?.getTracks().forEach(t => t.stop()); onClose(); }} aria-label="Cerrar cámara">
+                    <button type="button" className="camera-back-btn" onClick={() => { stopCameraTracks(); onClose(); }} aria-label="Cerrar cámara">
                       <i className="fas fa-times"></i>
                     </button>
                   )}
