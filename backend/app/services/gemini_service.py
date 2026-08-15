@@ -75,13 +75,13 @@ class GeminiService:
         if not isinstance(image_data, bytes):
             raise TypeError("image_data debe ser bytes o data URL")
         image = Image.open(io.BytesIO(image_data))
-        image = ImageOps.exif_transpose(image)
-        image = image.convert("RGB")
-        image = ImageOps.autocontrast(image, cutoff=1)
+        transposed = ImageOps.exif_transpose(image)
+        rgb = (transposed or image).convert("RGB")
+        contrasted = ImageOps.autocontrast(rgb, cutoff=1)
         max_edge = 1600
-        if max(image.size) > max_edge:
-            image.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
-        return image
+        if max(contrasted.size) > max_edge:
+            contrasted.thumbnail((max_edge, max_edge), Image.Resampling.LANCZOS)
+        return contrasted
 
     def _normalize_nombre(self, nombre: str) -> str:
         base = (nombre or "").strip() or "Cliente"

@@ -1,5 +1,7 @@
 """Endpoints públicos (sin JWT) para seguimiento del cliente."""
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
@@ -13,14 +15,16 @@ from app.services.tracking_service import public_status_label, summarize_problem
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
-def _resolve_media_url(raw_url: str | None, storage_key: str | None) -> str | None:
-    if not raw_url and not storage_key:
+def _resolve_media_url(raw_url: Any, storage_key: Any) -> str | None:
+    url = str(raw_url).strip() if raw_url else None
+    key = str(storage_key).strip() if storage_key else None
+    if not url and not key:
         return None
     settings = get_settings()
     public_base = (settings.s3_public_base_url or "").rstrip("/")
-    if storage_key and public_base:
-        return f"{public_base}/{storage_key.lstrip('/')}"
-    return raw_url
+    if key and public_base:
+        return f"{public_base}/{key.lstrip('/')}"
+    return url or None
 
 
 @router.get("/seguimiento/{token}")
@@ -49,26 +53,33 @@ def get_seguimiento_publico(
         .order_by(RepairCardMedia.position.asc(), RepairCardMedia.id.asc())
         .all()
     )
-    fotos = []
+    fotos: list[dict[str, str | int]] = []
     for m in media_rows:
         url = _resolve_media_url(m.url, m.storage_key)
         thumb = _resolve_media_url(m.thumb_url or m.url, m.storage_key)
         if url:
-            fotos.append({"url": url, "thumb_url": thumb or url, "position": m.position})
+            fotos.append({
+                "url": url,
+                "thumb_url": thumb or url,
+                "position": int(m.position or 0),
+            })
 
-    cover = (t.image_url or "").strip()
+    cover = str(t.image_url or "").strip()
     if cover and cover.startswith("http") and not any(f["url"] == cover for f in fotos):
         fotos.insert(0, {"url": cover, "thumb_url": cover, "position": -1})
 
+    owner = str(t.owner_name or "Cliente").strip()
+    due_raw: Any = getattr(t, "due_date", None)
+    due = due_raw.strftime("%Y-%m-%d") if due_raw is not None else None
     return {
-        "folio": t.id,
-        "nombre_propietario": (t.owner_name or "Cliente").strip(),
+        "folio": int(t.id),
+        "nombre_propietario": owner,
         "estado": public_status_label(t.status),
-        "estado_key": t.status,
+        "estado_key": str(t.status or ""),
         "problema": summarize_problem(t.problem),
         "fecha_inicio": utc_iso_z(t.start_date),
-        "fecha_limite": t.due_date.strftime("%Y-%m-%d") if t.due_date else None,
-        "tiene_cargador": t.has_charger,
+        "fecha_limite": due,
+        "tiene_cargador": str(t.has_charger) if t.has_charger is not None else None,
         "fotos": fotos,
         "fotos_count": len(fotos),
     }
