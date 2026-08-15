@@ -19,10 +19,10 @@ from app.api.routes import users as users_routes
 from app.api.routes.multimedia import executor
 from app.core.config import get_settings
 from app.core.database import Base, SessionLocal, engine
-from app.core.schema_bootstrap import run_schema_bootstrap
 from app.core.errors import default_code_for_status
 from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
+from app.core.schema_bootstrap import run_schema_bootstrap
 from app.models import (  # noqa: F401 — register all models with Base.metadata
     Comment,
     KanbanColumn,

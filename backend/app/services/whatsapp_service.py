@@ -11,7 +11,6 @@ from typing import Any
 
 import httpx
 from loguru import logger
-
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
