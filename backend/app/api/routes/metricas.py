@@ -11,8 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.cache import get_cached, set_cached
 from app.core.database import get_db
 from app.models.repair_card import RepairCard, StatusHistory
+from app.services.auth_service import get_current_user
 
-router = APIRouter(prefix="/api/metricas", tags=["metricas"])
+router = APIRouter(
+    prefix="/api/metricas",
+    tags=["metricas"],
+    dependencies=[Depends(get_current_user)],
+)
 
 METRICAS_CACHE_KEY = "metricas_kanban"
 METRICAS_TTL = 120  # 2 minutes

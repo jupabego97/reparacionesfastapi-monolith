@@ -22,9 +22,13 @@ from app.schemas.kanban import (
     TagCreate,
     TagUpdate,
 )
-from app.services.auth_service import get_current_user, get_current_user_optional, require_role
+from app.services.auth_service import get_current_user, require_role
 
-router = APIRouter(prefix="/api", tags=["kanban"])
+router = APIRouter(
+    prefix="/api",
+    tags=["kanban"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # ==================== COLUMNAS (Mejora #2, #12) ====================
@@ -291,15 +295,15 @@ def create_comment(
     tarjeta_id: int,
     data: CommentCreate,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user_optional),
+    user: User = Depends(get_current_user),
 ):
     t = db.query(RepairCard).filter(RepairCard.id == tarjeta_id).first()
     if not t:
         raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
     comment = Comment(
         tarjeta_id=tarjeta_id,
-        user_id=user.id if user else None,
-        author_name=user.full_name if user else "Anónimo",
+        user_id=user.id,
+        author_name=user.full_name,
         content=data.content,
     )
     db.add(comment)

@@ -69,12 +69,19 @@ def register(
     if data.email and db.query(User).filter(User.email == data.email).first():
         raise HTTPException(status_code=409, detail="El email ya esta registrado")
 
+    allowed_roles = {"admin", "tecnico", "recepcion"}
+    requested_role = (data.role or "tecnico").strip().lower()
+    if current_user and current_user.role == "admin" and requested_role in allowed_roles:
+        role = requested_role
+    else:
+        role = "tecnico"
+
     user = User(
         username=data.username,
         email=data.email,
         hashed_password=hash_password(data.password),
         full_name=data.full_name or "Usuario",
-        role=data.role or "tecnico",
+        role=role,
         avatar_color=data.avatar_color or "#00ACC1",
     )
     db.add(user)

@@ -280,6 +280,22 @@ export default function KanbanBoard({
 
   const deleteMutation = useMutation({
     mutationFn: (id: number) => api.deleteTarjeta(id),
+    onSuccess: (_data, id) => {
+      queryClient.setQueriesData<InfiniteData<TarjetasBoardResponse, string | undefined>>(
+        { queryKey: ['tarjetas-board'] },
+        old => {
+          if (!old) return old;
+          return {
+            ...old,
+            pages: old.pages.map(page => ({
+              ...page,
+              tarjetas: page.tarjetas.filter(t => t.id !== id),
+            })),
+          };
+        },
+      );
+      void queryClient.invalidateQueries({ queryKey: ['tarjetas-board'] });
+    },
   });
 
   const tarjetasPorColumna = useMemo(() => {

@@ -91,7 +91,7 @@ export default function LoginScreen() {
 
           {isLogin && (
             <p className="login-hint">
-              <i className="fas fa-info-circle"></i> Primera vez? Credenciales: <strong>admin / admin123</strong>
+              <i className="fas fa-info-circle"></i> Use las credenciales que le asignó el administrador.
             </p>
           )}
         </form>

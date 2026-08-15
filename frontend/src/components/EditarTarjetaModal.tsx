@@ -83,7 +83,7 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
       } else {
         setWaNotifyMsg(r.message || `Estado: ${r.status}`);
       }
-      void qc.invalidateQueries({ queryKey: ['tarjetas'] });
+      void qc.invalidateQueries({ queryKey: ['tarjetas-board'] });
     },
     onError: (e: unknown) => {
       setWaNotifyMsg(e instanceof Error ? e.message : 'Error al enviar');

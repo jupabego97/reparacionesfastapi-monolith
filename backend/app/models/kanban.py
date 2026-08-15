@@ -6,8 +6,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, Table, Text
 
-from app.core.datetime_fmt import utc_iso_z
 from app.core.database import Base
+from app.core.datetime_fmt import utc_iso_z
 
 # --- Tabla intermedia para relación M:N tarjetas <-> tags ---
 repair_card_tags = Table(

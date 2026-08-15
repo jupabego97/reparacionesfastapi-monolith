@@ -1,7 +1,11 @@
+from urllib.parse import parse_qs
+
 import socketio
 from loguru import logger
 
 from app.core.config import get_settings
+from app.core.database import SessionLocal
+from app.services.auth_service import get_user_from_token_string
 
 settings = get_settings()
 transports = ["polling"] if settings.socketio_safe_mode else ["websocket", "polling"]
@@ -26,9 +30,33 @@ sio = socketio.AsyncServer(
 )
 
 
+def _token_from_connect(environ: dict, auth: object | None) -> str | None:
+    if isinstance(auth, dict):
+        raw = auth.get("token") or auth.get("access_token")
+        if raw:
+            return str(raw)
+    qs = parse_qs(environ.get("QUERY_STRING") or "")
+    if qs.get("token"):
+        return qs["token"][0]
+    header = environ.get("HTTP_AUTHORIZATION") or ""
+    if header.lower().startswith("bearer "):
+        return header.split(" ", 1)[1].strip()
+    return None
+
+
 @sio.on("connect")
-async def connect(sid, env):
-    logger.info(f"Cliente conectado: {sid}")
+async def connect(sid, environ, auth=None):
+    token = _token_from_connect(environ, auth)
+    db = SessionLocal()
+    try:
+        user = get_user_from_token_string(token or "", db)
+        if not user:
+            logger.warning("Socket rechazado (sin JWT válido): {}", sid)
+            return False
+        await sio.save_session(sid, {"user_id": user.id, "role": user.role})
+    finally:
+        db.close()
+    logger.info("Cliente conectado: {} user={}", sid, user.id)
     await sio.emit("status", {"message": "Conectado al servidor en tiempo real"}, to=sid)
 
 
@@ -39,5 +67,8 @@ async def disconnect(sid):
 
 @sio.on("join")
 async def join(sid, data=None):
-    logger.info(f"Cliente se unió: {sid}")
+    session = await sio.get_session(sid)
+    if not session or not session.get("user_id"):
+        return False
+    logger.info("Cliente se unió: {}", sid)
     await sio.emit("status", {"message": "Unido al canal de sincronización"}, to=sid)
