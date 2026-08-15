@@ -34,7 +34,7 @@ from app.services.auth_service import get_current_user, get_current_user_optiona
 from app.services.notification_service import notificar_cambio_estado
 from app.services.storage_service import get_storage_service
 from app.services.tarjeta_notify_service import notify_tarjeta_created
-from app.services.tracking_service import ensure_tracking_token, generate_tracking_token
+from app.services.tracking_service import generate_tracking_token
 from app.socket_events import sio
 
 router = APIRouter(prefix="/api/tarjetas", tags=["tarjetas"])

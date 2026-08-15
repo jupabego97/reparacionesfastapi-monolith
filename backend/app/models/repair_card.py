@@ -2,8 +2,8 @@ from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, Text
 
-from app.core.datetime_fmt import utc_iso_z
 from app.core.database import Base
+from app.core.datetime_fmt import utc_iso_z
 
 
 class RepairCard(Base):
@@ -85,6 +85,7 @@ class RepairCard(Base):
             "motivo_bloqueo": self.blocked_reason,
             "bloqueada_por": self.blocked_by,
             "fecha_bloqueo": utc_iso_z(self.blocked_at),
+            "tracking_token": self.tracking_token,
         }
         d["imagen_url"] = self.image_url if include_image else None
         return d

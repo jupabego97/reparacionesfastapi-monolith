@@ -138,6 +138,10 @@ export default function App() {
   if (seguimientoToken) {
     return <SeguimientoPage token={seguimientoToken} />;
   }
+  return <BoardApp />;
+}
+
+function BoardApp() {
 
   const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
   const qc = useQueryClient();

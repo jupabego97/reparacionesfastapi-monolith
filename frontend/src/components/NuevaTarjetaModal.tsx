@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Tag, UserInfo, TarjetaCreate } from '../api/client';
+import type { Tag, UserInfo, TarjetaCreate, Tarjeta } from '../api/client';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { captureVideoFrameToJpegBlob, imageFileToJpegBlob, blobToDataUrl } from '../utils/imageCapture';
 import { newTarjetaCreatedWhatsAppUrl } from '../utils/whatsappUrl';
 import { tomorrowColombiaISO } from '../utils/colombiaTime';
+import TicketIngresoDialog from './TicketIngresoDialog';
 
 interface Props {
   onClose: () => void;
@@ -48,6 +49,9 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [successBanner, setSuccessBanner] = useState('');
+  const [ticketToPrint, setTicketToPrint] = useState<Tarjeta | null>(null);
+  const [ticketNotice, setTicketNotice] = useState('');
+  const [waFallbackUrl, setWaFallbackUrl] = useState<string | null>(null);
 
   const { data: allTags = [] } = useQuery({ queryKey: ['tags'], queryFn: api.getTags });
   const { data: users = [] } = useQuery({ queryKey: ['users'], queryFn: api.getUsers });
@@ -249,58 +253,58 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
 
       onSuccess?.();
 
+      const openTicket = (notice: string, fallbackWa: string | null = null) => {
+        setTicketNotice(notice);
+        setWaFallbackUrl(fallbackWa);
+        setTicketToPrint(created);
+      };
+
       const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
       if (!token) {
-        setError(
-          'Tarjeta creada. Inicie sesión para enviar el aviso por WhatsApp (Meta) o abra el chat desde la tarjeta.',
-        );
+        openTicket('Tarjeta creada. Seleccione la impresora de la red para el ticket. Inicie sesión para enviar WhatsApp Meta.');
         return;
       }
+
+      const waUrl = newTarjetaCreatedWhatsAppUrl(
+        created.whatsapp ?? form.whatsapp.trim(),
+        created.nombre_propietario ?? form.nombre_propietario.trim(),
+        created.id,
+        created.problema ?? (form.problema.trim() || 'Sin descripción'),
+      );
 
       try {
         const nr = await api.notifyTarjetaCreated(created.id);
         if (nr.status === 'sent') {
           setSuccessBanner('WhatsApp enviado al cliente con enlace a las fotos.');
-          await new Promise(r => setTimeout(r, 1000));
-          setSuccessBanner('');
-          onClose();
+          openTicket('WhatsApp enviado. Ahora elija la impresora de la red de la empresa para el ticket del cliente.');
           return;
         }
         if (nr.status === 'skipped') {
           const m = (nr.message || '').toLowerCase();
           if (m.includes('ya se envió')) {
             setSuccessBanner('El aviso por WhatsApp ya estaba enviado para esta tarjeta.');
-            await new Promise(r => setTimeout(r, 800));
-            setSuccessBanner('');
-            onClose();
+            openTicket('El aviso de WhatsApp ya estaba enviado. Elija la impresora de la red para el ticket.');
             return;
           }
           if (m.includes('no está configurado')) {
-            const waUrl = newTarjetaCreatedWhatsAppUrl(
-              created.whatsapp ?? form.whatsapp.trim(),
-              created.nombre_propietario ?? form.nombre_propietario.trim(),
-              created.id,
-              created.problema ?? (form.problema.trim() || 'Sin descripción'),
+            openTicket(
+              'Tarjeta creada. Elija la impresora de la red para el ticket. Puede abrir WhatsApp si el envío automático no está configurado.',
+              waUrl,
             );
-            if (waUrl) {
-              window.location.href = waUrl;
-              return;
-            }
-            setError(`Tarjeta creada. ${nr.message || 'WhatsApp no configurado en el servidor.'}`);
             return;
           }
           if (m.includes('inválido') || m.includes('vacío')) {
-            onClose();
+            openTicket('Tarjeta creada. Elija la impresora de la red para el ticket.');
             return;
           }
-          setError(`Tarjeta creada. WhatsApp no se envió: ${nr.message || 'omitido'}`);
+          openTicket(`Tarjeta creada. WhatsApp no se envió: ${nr.message || 'omitido'}. Elija la impresora de la red para el ticket.`);
           return;
         }
-        setError(`Tarjeta creada. WhatsApp falló: ${nr.message || 'error desconocido'}`);
+        openTicket(`Tarjeta creada. WhatsApp falló: ${nr.message || 'error desconocido'}. Elija la impresora de la red para el ticket.`);
         return;
       } catch (e) {
-        setError(
-          `Tarjeta creada. Error al enviar WhatsApp: ${e instanceof Error ? e.message : 'Error de red o servidor'}`,
+        openTicket(
+          `Tarjeta creada. Error al enviar WhatsApp: ${e instanceof Error ? e.message : 'Error de red o servidor'}. Elija la impresora de la red para el ticket.`,
         );
         return;
       }
@@ -310,7 +314,8 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <>
+    <div className="modal-overlay" onClick={ticketToPrint ? undefined : onClose}>
       <div className="modal-pro" onClick={e => e.stopPropagation()}>
         <div className="modal-pro-header">
           <h3><i className="fas fa-plus-circle"></i> Nueva reparación</h3>
@@ -517,5 +522,14 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
         )}
       </div>
     </div>
+    {ticketToPrint && (
+      <TicketIngresoDialog
+        ticket={ticketToPrint}
+        notice={ticketNotice}
+        waFallbackUrl={waFallbackUrl}
+        onDone={onClose}
+      />
+    )}
+    </>
   );
 }

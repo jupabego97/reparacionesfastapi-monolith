@@ -2,10 +2,10 @@
 from unittest.mock import patch
 
 import pytest
-
 from app.core.config import get_settings
 from app.services import whatsapp_service as ws_mod
 from app.services.whatsapp_service import normalize_whatsapp_digits
+
 from tests.conftest import client
 
 

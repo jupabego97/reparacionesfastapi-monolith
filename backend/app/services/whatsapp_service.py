@@ -11,7 +11,6 @@ from typing import Any
 
 import httpx
 from loguru import logger
-
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -26,7 +25,7 @@ class WhatsappSendResult:
     http_status: int | None = None
 
 
-def normalize_whatsapp_digits(phone: str | None, default_country_code: str = "57") -> str | None:
+def normalize_whatsapp_digits(phone: Any, default_country_code: str = "57") -> str | None:
     """Normaliza a solo dígitos con prefijo país (Colombia: 10 dígitos que empiezan por 3 → 57…)."""
     if not phone or not str(phone).strip():
         return None
@@ -65,7 +64,7 @@ def build_tarjeta_created_body(tarjeta: Any, *, photos_url: str | None = None) -
     return "\n".join(lines)
 
 
-def _template_text_non_empty(value: str, fallback: str = "—") -> str:
+def _template_text_non_empty(value: Any, fallback: str = "—") -> str:
     """Meta rechaza variables de plantilla con texto vacío (#131008)."""
     s = (value or "").strip()
     return s if s else fallback

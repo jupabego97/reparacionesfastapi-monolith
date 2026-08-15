@@ -28,6 +28,7 @@ def test_create_and_get_tarjeta():
     assert data["nombre_propietario"] == "Test"
     assert data["problema"] == "Problema test"
     assert "id" in data
+    assert data.get("tracking_token")
 
     r2 = client.get("/api/tarjetas")
     assert r2.status_code == 200

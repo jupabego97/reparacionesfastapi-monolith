@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy.orm import Session
 
@@ -35,7 +35,7 @@ def ensure_tracking_token(card: RepairCard, db: Session) -> str:
             .first()
         )
         if not clash:
-            card.tracking_token = token
+            cast(Any, card).tracking_token = token
             db.commit()
             db.refresh(card)
             return token
@@ -50,14 +50,15 @@ def build_public_seguimiento_url(settings: Settings, card: RepairCard, db: Sessi
     return f"{base}/seguimiento/{token}"
 
 
-def public_status_label(status_key: str | None) -> str:
+def public_status_label(status_key: Any) -> str:
     if not status_key:
         return "En proceso"
-    return STATUS_PUBLIC_LABELS.get(status_key, status_key.replace("_", " ").title())
+    key = str(status_key)
+    return STATUS_PUBLIC_LABELS.get(key, key.replace("_", " ").title())
 
 
-def summarize_problem(problem: str | None, max_len: int = 200) -> str:
-    p = (problem or "").strip() or "Sin descripción"
+def summarize_problem(problem: Any, max_len: int = 200) -> str:
+    p = (str(problem) if problem is not None else "").strip() or "Sin descripción"
     if len(p) > max_len:
         return p[: max_len - 3] + "..."
     return p

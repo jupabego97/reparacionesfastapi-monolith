@@ -71,7 +71,7 @@ async def notify_tarjeta_created(
     db.refresh(t)
 
     cc = (settings.whatsapp_default_country_code or "57").strip().lstrip("+") or "57"
-    digits = normalize_whatsapp_digits(t.whatsapp_number, cc)
+    digits = normalize_whatsapp_digits(getattr(t, "whatsapp_number", None), cc)
     if not digits:
         _log_outbound(
             db,
