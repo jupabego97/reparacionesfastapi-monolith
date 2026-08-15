@@ -4,6 +4,8 @@ import { api } from '../api/client';
 import type { TarjetaDetail, SubTask, CommentItem, Tag, UserInfo, TarjetaUpdate, TarjetaMediaItem, KanbanColumn } from '../api/client';
 import ConfirmModal from './ConfirmModal';
 import { formatDateTimeColombia } from '../utils/colombiaTime';
+import { buildIngresoTicketHtml } from '../utils/ingresoTicket';
+import { openNativePrintDialog } from '../utils/printTicket';
 
 interface Props {
   tarjetaId: number;
@@ -242,7 +244,20 @@ export default function EditarTarjetaModal({ tarjetaId, onClose }: Props) {
         <div className="modal-pro modal-lg" ref={modalRef} onClick={e => e.stopPropagation()}>
           <div className="modal-pro-header">
             <h3><i className="fas fa-pen-fancy"></i> Editar reparación #{tarjetaId}</h3>
-            <button className="modal-close" onClick={onClose}><i className="fas fa-times"></i></button>
+            <div className="modal-pro-header-actions">
+              {tarjeta && (
+                <button
+                  type="button"
+                  className="header-btn"
+                  title="Imprimir ticket de ingreso"
+                  aria-label="Imprimir ticket de ingreso"
+                  onClick={() => openNativePrintDialog(buildIngresoTicketHtml(tarjeta, window.location.origin))}
+                >
+                  <i className="fas fa-print"></i>
+                </button>
+              )}
+              <button className="modal-close" onClick={onClose}><i className="fas fa-times"></i></button>
+            </div>
           </div>
 
           {loadingTarjeta || !tarjeta ? (
