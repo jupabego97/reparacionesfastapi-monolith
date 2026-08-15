@@ -107,10 +107,7 @@ export default function NuevaTarjetaModal({ onClose, onSuccess }: Props) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
-      const el = videoRef.current;
-      const attached = (el?.srcObject as MediaStream | null) || stream;
-      attached?.getTracks().forEach(t => t.stop());
-      if (el) el.srcObject = null;
+      stream?.getTracks().forEach(t => t.stop());
     };
   }, [cameraActive, step]);
 
