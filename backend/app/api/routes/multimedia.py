@@ -1,15 +1,20 @@
 import base64
 import concurrent.futures
 
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel
 
 from app.core.limiter import limiter
+from app.services.auth_service import get_current_user
 from app.services.gemini_service import get_gemini_service
 
-router = APIRouter(prefix="/api", tags=["multimedia"])
+router = APIRouter(
+    prefix="/api",
+    tags=["multimedia"],
+    dependencies=[Depends(get_current_user)],
+)
 
 executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 

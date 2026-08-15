@@ -30,14 +30,18 @@ from app.schemas.tarjeta import (
     TarjetaCreate,
     TarjetaUpdate,
 )
-from app.services.auth_service import get_current_user, get_current_user_optional, require_role
+from app.services.auth_service import get_current_user, require_role
 from app.services.notification_service import notificar_cambio_estado
 from app.services.storage_service import get_storage_service
 from app.services.tarjeta_notify_service import notify_tarjeta_created
-from app.services.tracking_service import ensure_tracking_token, generate_tracking_token
+from app.services.tracking_service import generate_tracking_token
 from app.socket_events import sio
 
-router = APIRouter(prefix="/api/tarjetas", tags=["tarjetas"])
+router = APIRouter(
+    prefix="/api/tarjetas",
+    tags=["tarjetas"],
+    dependencies=[Depends(get_current_user)],
+)
 
 CACHE_HEADERS = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
 MAX_MEDIA_PER_CARD = 10
@@ -396,6 +400,7 @@ def _auto_migrate_legacy_for_cards(db: Session, cards: list[RepairCard], max_car
 @router.get("")
 def get_tarjetas(
     db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
     page: int | None = Query(None),
     per_page: int | None = Query(None),
     light: int | None = Query(None),
@@ -420,6 +425,9 @@ def get_tarjetas(
         include_image = "image_thumb" in include_opts or "image" in include_opts
 
     q = db.query(RepairCard)
+
+    if include_deleted and user.role != "admin":
+        include_deleted = False
 
     if not include_deleted:
         q = q.filter(RepairCard.deleted_at.is_(None))
@@ -626,7 +634,7 @@ async def create_tarjeta(
     request: Request,
     data: TarjetaCreate,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user_optional),
+    _user: User = Depends(get_current_user),
 ):
     settings = get_settings()
     nombre = (data.nombre_propietario or "").strip() or "Cliente"
@@ -741,7 +749,7 @@ async def update_tarjeta(
     id: int,
     data: TarjetaUpdate,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_current_user_optional),
+    user: User = Depends(get_current_user),
 ):
     t = db.query(RepairCard).filter(RepairCard.id == id).first()
     if not t:
@@ -812,8 +820,8 @@ async def update_tarjeta(
                 old_status=old_status,
                 new_status=nuevo,
                 changed_at=datetime.now(UTC),
-                changed_by=user.id if user else None,
-                changed_by_name=user.full_name if user else None,
+                changed_by=user.id,
+                changed_by_name=user.full_name,
             ))
             notificar_cambio_estado(db, t, old_status, nuevo)
 

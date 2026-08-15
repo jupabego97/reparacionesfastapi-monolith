@@ -1,7 +1,17 @@
 """Core API tests: health, CRUD, status transitions."""
 from datetime import UTC
 
+import pytest
+
 from tests.conftest import client
+
+
+@pytest.fixture(autouse=True)
+def _auth(auth_headers):
+    client.headers.update(auth_headers)
+    yield
+    for key in auth_headers:
+        client.headers.pop(key, None)
 
 
 def test_health():
@@ -92,11 +102,12 @@ def test_delete_tarjeta_soft():
     card_id = r.json()["id"]
 
     r2 = client.delete(f"/api/tarjetas/{card_id}")
-    assert r2.status_code in (204, 401)
+    assert r2.status_code == 204
 
-    # If auth is required for delete, verify it's not in the list
     r3 = client.get("/api/tarjetas")
     assert r3.status_code == 200
+    items = r3.json()
+    assert all(t["id"] != card_id for t in items)
 
 
 def test_create_with_defaults():

@@ -138,8 +138,11 @@ export default function App() {
   if (seguimientoToken) {
     return <SeguimientoPage token={seguimientoToken} />;
   }
+  return <BoardApp />;
+}
 
-  const { user, isAuthenticated, logout, loading: authLoading } = useAuth();
+function BoardApp() {
+  const { user, token, isAuthenticated, logout, loading: authLoading } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
   const [mobileHome, setMobileHome] = useState(true);
@@ -408,6 +411,8 @@ export default function App() {
       transports: safeMode ? ['polling'] : ['polling', 'websocket'],
       upgrade: !safeMode,
       reconnection: true,
+      auth: token ? { token } : undefined,
+      query: token ? { token } : undefined,
     });
 
     s.on('connect', () => setConnStatus('connected'));
@@ -453,7 +458,7 @@ export default function App() {
       }
       s.disconnect();
     };
-  }, [isAuthenticated, qc, flushReorderBuffer]);
+  }, [isAuthenticated, token, qc, flushReorderBuffer]);
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName)) return;
@@ -808,6 +813,7 @@ export default function App() {
           onDone={() => {
             setSelectedIds([]);
             setSelectMode(false);
+            qc.invalidateQueries({ queryKey: ['tarjetas-board'] });
             setToast({ msg: 'Operación en lote completada', type: 'success' });
           }}
         />

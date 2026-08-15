@@ -10,8 +10,13 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.models.repair_card import RepairCard
+from app.services.auth_service import get_current_user
 
-router = APIRouter(prefix="/api", tags=["exportar"])
+router = APIRouter(
+    prefix="/api",
+    tags=["exportar"],
+    dependencies=[Depends(get_current_user)],
+)
 
 BATCH_SIZE = 500
 EXCEL_LIMIT = 5000

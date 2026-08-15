@@ -16,13 +16,52 @@ def test_debug_schema_disabled_by_default():
     assert resp.status_code == 404
 
 
-def test_http_error_envelope_shape():
-    resp = client.get("/api/tarjetas/999999")
+def test_http_error_envelope_shape(auth_headers):
+    resp = client.get("/api/tarjetas/999999", headers=auth_headers)
     assert resp.status_code == 404
     body = resp.json()
     assert "code" in body
     assert "message" in body
     assert "request_id" in body
+
+
+def test_tarjetas_list_requires_auth():
+    assert client.get("/api/tarjetas").status_code == 401
+
+
+def test_tarjeta_detail_requires_auth():
+    assert client.get("/api/tarjetas/1").status_code == 401
+
+
+def test_create_tarjeta_requires_auth():
+    r = client.post("/api/tarjetas", json={"nombre_propietario": "X", "problema": "Y"})
+    assert r.status_code == 401
+
+
+def test_kanban_write_requires_auth():
+    r = client.post("/api/columnas", json={"key": "extra", "title": "Extra"})
+    assert r.status_code == 401
+
+
+def test_export_requires_auth():
+    assert client.get("/api/exportar").status_code == 401
+
+
+def test_estadisticas_requires_auth():
+    assert client.get("/api/estadisticas").status_code == 401
+
+
+def test_ia_requires_auth():
+    r = client.post("/api/procesar-imagen", json={"image": "abc"})
+    assert r.status_code == 401
+
+
+def test_plantillas_requires_auth():
+    assert client.get("/api/plantillas").status_code == 401
+
+
+def test_actividad_requires_auth():
+    assert client.get("/api/actividad").status_code == 401
 
 
 def test_permanent_delete_requires_admin(tech_headers, sample_tarjeta):

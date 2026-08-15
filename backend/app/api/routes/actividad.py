@@ -5,8 +5,13 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.repair_card import RepairCard, StatusHistory
+from app.services.auth_service import get_current_user
 
-router = APIRouter(prefix="/api/actividad", tags=["actividad"])
+router = APIRouter(
+    prefix="/api/actividad",
+    tags=["actividad"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("")

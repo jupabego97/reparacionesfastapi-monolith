@@ -85,6 +85,28 @@ def test_register_new_user(auth_headers):
     assert data["user"]["username"] == "newuser"
 
 
+def test_public_register_cannot_self_assign_admin():
+    r = client.post("/api/auth/register", json={
+        "username": "hackeradmin",
+        "password": "pass1234",
+        "full_name": "Hacker",
+        "role": "admin",
+    })
+    assert r.status_code == 201
+    assert r.json()["user"]["role"] == "tecnico"
+
+
+def test_admin_register_can_set_role(auth_headers):
+    r = client.post("/api/auth/register", json={
+        "username": "newadmin2",
+        "password": "pass1234",
+        "full_name": "New Admin",
+        "role": "admin",
+    }, headers=auth_headers)
+    assert r.status_code == 201
+    assert r.json()["user"]["role"] == "admin"
+
+
 def test_register_duplicate_username(admin_user):
     _, token = admin_user
     headers = {"Authorization": f"Bearer {token}"}

@@ -11,15 +11,12 @@ import pytest
 from app.core.database import Base, SessionLocal, engine, get_db
 from app.core.limiter import limiter
 from app.main import app
+from app.models import RepairCard, User
+from app.services.auth_service import create_token, hash_password
+from fastapi.testclient import TestClient
 
 # Evita 429 en suites que hacen muchos POST /api/tarjetas
 limiter.enabled = False
-from app.models import (
-    RepairCard,
-    User,
-)
-from app.services.auth_service import create_token, hash_password
-from fastapi.testclient import TestClient
 
 
 def override_get_db():

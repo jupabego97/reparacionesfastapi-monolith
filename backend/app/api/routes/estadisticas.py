@@ -11,8 +11,13 @@ from sqlalchemy.orm import Session
 from app.core.cache import DEFAULT_TTL, STATS_KEY, get_cached, set_cached
 from app.core.database import get_db
 from app.models.repair_card import RepairCard
+from app.services.auth_service import get_current_user
 
-router = APIRouter(prefix="/api/estadisticas", tags=["estadisticas"])
+router = APIRouter(
+    prefix="/api/estadisticas",
+    tags=["estadisticas"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _safe_avg_days(db: Session, date_start, date_end, *filters) -> float:

@@ -73,6 +73,22 @@ def get_current_user_optional(
         raise
 
 
+def get_user_from_token_string(token: str, db: Session) -> User | None:
+    """Valida un JWT y retorna el usuario activo, o None si el token no sirve."""
+    if not token:
+        return None
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except jwt.PyJWTError:
+        return None
+    try:
+        user_id = int(payload["sub"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+
+
 def get_current_user(
     request: Request,
     creds: HTTPAuthorizationCredentials | None = Depends(security),

@@ -19,10 +19,10 @@ from app.api.routes import users as users_routes
 from app.api.routes.multimedia import executor
 from app.core.config import get_settings
 from app.core.database import Base, SessionLocal, engine
-from app.core.schema_bootstrap import run_schema_bootstrap
 from app.core.errors import default_code_for_status
 from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
+from app.core.schema_bootstrap import run_schema_bootstrap
 from app.models import (  # noqa: F401 — register all models with Base.metadata
     Comment,
     KanbanColumn,
@@ -57,7 +57,10 @@ def _mount_frontend(app: FastAPI) -> None:
 
     @app.get("/", include_in_schema=False)
     async def serve_frontend_root():
-        return FileResponse(dist_dir / "index.html")
+        return FileResponse(
+            dist_dir / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend_app(full_path: str):
@@ -69,7 +72,10 @@ def _mount_frontend(app: FastAPI) -> None:
         if requested.is_file() and requested.is_relative_to(dist_dir.resolve()):
             return FileResponse(requested)
 
-        return FileResponse(dist_dir / "index.html")
+        return FileResponse(
+            dist_dir / "index.html",
+            headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+        )
 
 
 def _setup_observability(app: FastAPI, settings) -> None:
