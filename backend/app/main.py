@@ -7,7 +7,6 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
 from loguru import logger
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -23,6 +22,7 @@ from app.core.errors import default_code_for_status
 from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
 from app.core.schema_bootstrap import run_schema_bootstrap
+from app.core.static_headers import ImmutableAssets, file_cache_headers, html_cache_headers
 from app.models import (  # noqa: F401 — register all models with Base.metadata
     Comment,
     KanbanColumn,
@@ -53,11 +53,11 @@ def _mount_frontend(app: FastAPI) -> None:
         return
 
     if assets_dir.exists():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="frontend-assets")
+        app.mount("/assets", ImmutableAssets(directory=assets_dir), name="frontend-assets")
 
     @app.get("/", include_in_schema=False)
     async def serve_frontend_root():
-        return FileResponse(dist_dir / "index.html")
+        return FileResponse(dist_dir / "index.html", headers=html_cache_headers())
 
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_frontend_app(full_path: str):
@@ -67,9 +67,9 @@ def _mount_frontend(app: FastAPI) -> None:
 
         requested = (dist_dir / full_path).resolve()
         if requested.is_file() and requested.is_relative_to(dist_dir.resolve()):
-            return FileResponse(requested)
+            return FileResponse(requested, headers=file_cache_headers(requested))
 
-        return FileResponse(dist_dir / "index.html")
+        return FileResponse(dist_dir / "index.html", headers=html_cache_headers())
 
 
 def _setup_observability(app: FastAPI, settings) -> None:

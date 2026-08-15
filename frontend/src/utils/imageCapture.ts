@@ -1,6 +1,35 @@
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.92;
 
+export const CAMERA_CONSTRAINT_ATTEMPTS: MediaStreamConstraints[] = [
+  {
+    audio: false,
+    video: {
+      facingMode: { ideal: 'environment' },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+  },
+  { audio: false, video: { facingMode: { ideal: 'environment' } } },
+  { audio: false, video: true },
+];
+
+/** Pide cámara con restricciones cada vez más simples (algunos móviles rechazan 1080p). */
+export async function openUserCamera(): Promise<MediaStream> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Este navegador no permite cámara (hace falta HTTPS).');
+  }
+  let lastError: unknown;
+  for (const constraints of CAMERA_CONSTRAINT_ATTEMPTS) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('No se pudo acceder a la cámara');
+}
+
 /** Espera a que el video tenga dimensiones listas para pintar al canvas. */
 export async function waitForVideoFrame(video: HTMLVideoElement): Promise<void> {
   if (video.readyState < 2) {

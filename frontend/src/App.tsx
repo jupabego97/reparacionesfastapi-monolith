@@ -1,7 +1,8 @@
-import { useState, useEffect, lazy, Suspense, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, lazy, Suspense, useCallback, useRef, useMemo, Component } from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
-import { io } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 import { api, setUnauthorizedHandler, API_BASE } from './api/client';
 import type { TarjetaBoardItem, KanbanColumn, Tag, UserInfo, TarjetasBoardResponse, TarjetaUpdate, UserPreferences, SavedView } from './api/client';
 import { useAuth } from './contexts/AuthContext';
@@ -40,6 +41,34 @@ function ModalSuspenseFallback() {
       </div>
     </div>
   );
+}
+
+class ChunkErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(_error: Error, _info: ErrorInfo) {
+    window.dispatchEvent(new Event('app:new-version'));
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <div className="modal-overlay">
+          <div className="modal-pro" style={{ padding: '1.5rem', textAlign: 'center' }}>
+            <p>Hay una nueva versión. Actualice para continuar.</p>
+            <button className="btn-save" type="button" onClick={() => window.location.reload()}>
+              Actualizar
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }
 
 function unwrapSocketData<T>(payload: SocketEnvelope<T>): T {
@@ -334,17 +363,24 @@ function BoardApp() {
     return () => window.removeEventListener('click', close);
   }, []);
 
-  // Resetear a pantalla de inicio al volver de background (solo móvil)
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void import('./components/NuevaTarjetaModal');
+  }, [isAuthenticated]);
+
+  // Resetear a pantalla de inicio al volver de background (solo móvil).
+  // No hacerlo con el modal de cámara abierto: el permiso de getUserMedia
+  // oculta la pestaña y desmontaría la cámara.
   useEffect(() => {
     if (!isMobile) return;
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState === 'visible' && !showNew && editCardId == null) {
         setMobileHome(true);
       }
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [isMobile]);
+  }, [isMobile, showNew, editCardId]);
 
   const saveCurrentView = useCallback(() => {
     const nextIndex = (preferences.saved_views?.length || 0) + 1;
@@ -408,54 +444,66 @@ function BoardApp() {
     const url = API_BASE || window.location.origin;
     const safeModeEnv = import.meta.env.VITE_SOCKETIO_SAFE_MODE;
     const safeMode = safeModeEnv ? safeModeEnv === 'true' : import.meta.env.PROD;
-    const s = io(url, {
-      transports: safeMode ? ['polling'] : ['polling', 'websocket'],
-      upgrade: !safeMode,
-      reconnection: true,
-    });
+    let cancelled = false;
+    let socket: Socket | null = null;
 
-    s.on('connect', () => setConnStatus('connected'));
-    s.on('disconnect', () => setConnStatus('disconnected'));
-    s.on('connect_error', () => setConnStatus('disconnected'));
-
-    s.on('tarjeta_creada', (payload: SocketEnvelope<TarjetaBoardItem>) => {
-      const card = unwrapSocketData(payload);
-      if (!card?.id) return;
-      qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => applyCardPatch(old, card));
-      qc.invalidateQueries({ queryKey: ['notificaciones'] });
-    });
-
-    s.on('tarjeta_actualizada', (payload: SocketEnvelope<TarjetaBoardItem>) => {
-      const card = unwrapSocketData(payload);
-      if (!card?.id) return;
-      qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => applyCardPatch(old, card));
-      qc.invalidateQueries({ queryKey: ['notificaciones'] });
-    });
-
-    s.on('tarjeta_eliminada', (payload: SocketEnvelope<{ id: number }>) => {
-      const data = unwrapSocketData(payload);
-      if (!data?.id) return;
-      qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => removeCardPatch(old, data.id));
-    });
-
-    s.on('tarjetas_reordenadas', (payload: SocketEnvelope<{ items?: ReorderItem[] }>) => {
-      const data = unwrapSocketData(payload);
-      const items = data?.items;
-      if (!Array.isArray(items) || !items.length) {
+    void import('socket.io-client').then(({ io }) => {
+      if (cancelled) return;
+      const s = io(url, {
+        transports: safeMode ? ['polling'] : ['polling', 'websocket'],
+        upgrade: !safeMode,
+        reconnection: true,
+      });
+      socket = s;
+      if (cancelled) {
+        s.disconnect();
         return;
       }
-      reorderBufferRef.current.push(...items);
-      if (reorderTimerRef.current == null) {
-        reorderTimerRef.current = window.setTimeout(flushReorderBuffer, 150);
-      }
+
+      s.on('connect', () => setConnStatus('connected'));
+      s.on('disconnect', () => setConnStatus('disconnected'));
+      s.on('connect_error', () => setConnStatus('disconnected'));
+
+      s.on('tarjeta_creada', (payload: SocketEnvelope<TarjetaBoardItem>) => {
+        const card = unwrapSocketData(payload);
+        if (!card?.id) return;
+        qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => applyCardPatch(old, card));
+        qc.invalidateQueries({ queryKey: ['notificaciones'] });
+      });
+
+      s.on('tarjeta_actualizada', (payload: SocketEnvelope<TarjetaBoardItem>) => {
+        const card = unwrapSocketData(payload);
+        if (!card?.id) return;
+        qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => applyCardPatch(old, card));
+        qc.invalidateQueries({ queryKey: ['notificaciones'] });
+      });
+
+      s.on('tarjeta_eliminada', (payload: SocketEnvelope<{ id: number }>) => {
+        const data = unwrapSocketData(payload);
+        if (!data?.id) return;
+        qc.setQueriesData<BoardInfiniteData>({ queryKey: ['tarjetas-board'] }, old => removeCardPatch(old, data.id));
+      });
+
+      s.on('tarjetas_reordenadas', (payload: SocketEnvelope<{ items?: ReorderItem[] }>) => {
+        const data = unwrapSocketData(payload);
+        const items = data?.items;
+        if (!Array.isArray(items) || !items.length) {
+          return;
+        }
+        reorderBufferRef.current.push(...items);
+        if (reorderTimerRef.current == null) {
+          reorderTimerRef.current = window.setTimeout(flushReorderBuffer, 150);
+        }
+      });
     });
 
     setConnStatus('connecting');
     return () => {
+      cancelled = true;
       if (reorderTimerRef.current != null) {
         window.clearTimeout(reorderTimerRef.current);
       }
-      s.disconnect();
+      socket?.disconnect();
     };
   }, [isAuthenticated, qc, flushReorderBuffer]);
   useEffect(() => {
@@ -565,6 +613,7 @@ function BoardApp() {
           <ConexionBadge status={connStatus} />
         </div>
 
+        <ChunkErrorBoundary>
         <Suspense fallback={<ModalSuspenseFallback />}>
           {showNew && (
             <NuevaTarjetaModal
@@ -576,6 +625,7 @@ function BoardApp() {
             />
           )}
         </Suspense>
+        </ChunkErrorBoundary>
         <div aria-live="polite" aria-atomic="true">
           {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
         </div>
@@ -847,6 +897,7 @@ function BoardApp() {
         </nav>
       )}
 
+      <ChunkErrorBoundary>
       <Suspense fallback={<ModalSuspenseFallback />}>
         {showNew && (
           <NuevaTarjetaModal
@@ -861,6 +912,7 @@ function BoardApp() {
         {showStats && <EstadisticasModal onClose={() => setShowStats(false)} />}
         {showExport && <ExportarModal onClose={() => setShowExport(false)} />}
       </Suspense>
+      </ChunkErrorBoundary>
 
       <div aria-live="polite" aria-atomic="true">
         {toast && <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
